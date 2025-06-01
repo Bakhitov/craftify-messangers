@@ -1,18 +1,26 @@
-import express, { Request, Response, Router } from 'express';
+import express, { Request, Response, Router, RequestHandler } from 'express';
 import { Client } from 'whatsapp-web.js';
 import { WhatsAppService } from './whatsapp-service';
+import { MessageStorageService } from './services/message-storage.service';
+import { instanceMemoryService } from './instance-manager/services/instance-memory.service';
 import logger from './logger';
-export function routerFactory(client: Client): Router {
+import { createPool, getDatabaseConfig } from './config/database.config';
+
+export function routerFactory(
+  client: Client,
+  messageStorageService?: MessageStorageService,
+  instanceId?: string,
+): Router {
   // Create a router instance
   const router: Router = express.Router();
-  const whatsappService = new WhatsAppService(client);
+  const whatsappService = new WhatsAppService(client, messageStorageService, instanceId);
 
   // Get the media storage path from the client configuration
   const mediaStoragePath = (client as any).options?.mediaStoragePath || '.wwebjs_auth/media';
 
   /**
    * @swagger
-   * /api/status:
+   * /api/v1/status:
    *   get:
    *     summary: Get WhatsApp client connection status
    *     responses:
@@ -21,6 +29,11 @@ export function routerFactory(client: Client): Router {
    */
   router.get('/status', async (_req: Request, res: Response) => {
     try {
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const status = await whatsappService.getStatus();
       res.json(status);
     } catch (error) {
@@ -33,7 +46,46 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/contacts:
+   * /api/v1/health:
+   *   get:
+   *     summary: Health check endpoint for WhatsApp API
+   *     responses:
+   *       200:
+   *         description: Returns the health status of the WhatsApp API
+   *       503:
+   *         description: Service is not ready
+   */
+  router.get('/health', async (_req: Request, res: Response) => {
+    try {
+      if (!client || !client.info) {
+        res.status(503).json({
+          status: 'unhealthy',
+          provider: 'whatsapp',
+          error: 'WhatsApp client not ready',
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      res.json({
+        status: 'healthy',
+        provider: 'whatsapp',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: 'unhealthy',
+        provider: 'whatsapp',
+        error: 'Health check failed',
+        details: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/v1/contacts:
    *   get:
    *     summary: Get all WhatsApp contacts
    *     responses:
@@ -44,6 +96,11 @@ export function routerFactory(client: Client): Router {
    */
   router.get('/contacts', async (_req: Request, res: Response) => {
     try {
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const contacts = await whatsappService.getContacts();
       res.json(contacts);
     } catch (error) {
@@ -60,7 +117,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/contacts/search:
+   * /api/v1/contacts/search:
    *   get:
    *     summary: Search for contacts by name or number
    *     parameters:
@@ -85,6 +142,11 @@ export function routerFactory(client: Client): Router {
         return;
       }
 
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const contacts = await whatsappService.searchContacts(query);
       res.json(contacts);
     } catch (error) {
@@ -101,7 +163,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/chats:
+   * /api/v1/chats:
    *   get:
    *     summary: Get all WhatsApp chats
    *     responses:
@@ -112,6 +174,11 @@ export function routerFactory(client: Client): Router {
    */
   router.get('/chats', async (_req: Request, res: Response) => {
     try {
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const chats = await whatsappService.getChats();
       res.json(chats);
     } catch (error) {
@@ -128,7 +195,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/messages/{number}:
+   * /api/v1/messages/{number}:
    *   get:
    *     summary: Get messages from a specific chat
    *     parameters:
@@ -156,6 +223,11 @@ export function routerFactory(client: Client): Router {
       const number = req.params.number;
       const limit = parseInt(req.query.limit as string) || 10;
 
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const messages = await whatsappService.getMessages(number, limit);
       res.json(messages);
     } catch (error) {
@@ -181,7 +253,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/send:
+   * /api/v1/send:
    *   post:
    *     summary: Send a message to a WhatsApp contact
    *     requestBody:
@@ -217,7 +289,18 @@ export function routerFactory(client: Client): Router {
         return;
       }
 
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const result = await whatsappService.sendMessage(number, message);
+
+      // Обновляем статистику отправленных сообщений
+      if (instanceId && result.messageId) {
+        instanceMemoryService.updateMessageStats(instanceId, 'sent');
+      }
+
       res.json(result);
     } catch (error) {
       if (error instanceof Error) {
@@ -242,7 +325,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/groups:
+   * /api/v1/groups:
    *   get:
    *     summary: Get all WhatsApp groups
    *     responses:
@@ -253,6 +336,11 @@ export function routerFactory(client: Client): Router {
    */
   router.get('/groups', async (_req: Request, res: Response) => {
     try {
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const groups = await whatsappService.getGroups();
       res.json(groups);
     } catch (error) {
@@ -269,7 +357,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/groups/search:
+   * /api/v1/groups/search:
    *   get:
    *     summary: Search for groups by name, description, or member names
    *     parameters:
@@ -294,6 +382,11 @@ export function routerFactory(client: Client): Router {
         return;
       }
 
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const groups = await whatsappService.searchGroups(query);
       res.json(groups);
     } catch (error) {
@@ -310,7 +403,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/groups:
+   * /api/v1/groups:
    *   post:
    *     summary: Create a new WhatsApp group
    *     requestBody:
@@ -348,6 +441,11 @@ export function routerFactory(client: Client): Router {
         return;
       }
 
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const result = await whatsappService.createGroup(name, participants);
       res.json(result);
     } catch (error) {
@@ -364,7 +462,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/groups/{groupId}:
+   * /api/v1/groups/{groupId}:
    *   get:
    *     summary: Get a specific WhatsApp group by ID
    *     parameters:
@@ -385,6 +483,12 @@ export function routerFactory(client: Client): Router {
   router.get('/groups/:groupId', async (req: Request, res: Response) => {
     try {
       const groupId = req.params.groupId;
+
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const group = await whatsappService.getGroupById(groupId);
       res.json(group);
     } catch (error) {
@@ -410,7 +514,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/groups/{groupId}/messages:
+   * /api/v1/groups/{groupId}/messages:
    *   get:
    *     summary: Get messages from a specific group
    *     parameters:
@@ -438,6 +542,11 @@ export function routerFactory(client: Client): Router {
       const groupId = req.params.groupId;
       const limit = parseInt(req.query.limit as string) || 10;
 
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const messages = await whatsappService.getGroupMessages(groupId, limit);
       res.json(messages);
     } catch (error) {
@@ -463,7 +572,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/groups/{groupId}/participants/add:
+   * /api/v1/groups/{groupId}/participants/add:
    *   post:
    *     summary: Add participants to a WhatsApp group
    *     parameters:
@@ -507,6 +616,11 @@ export function routerFactory(client: Client): Router {
         return;
       }
 
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const result = await whatsappService.addParticipantsToGroup(groupId, participants);
       res.json(result);
     } catch (error) {
@@ -537,7 +651,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/groups/{groupId}/send:
+   * /api/v1/groups/{groupId}/send:
    *   post:
    *     summary: Send a message to a WhatsApp group
    *     parameters:
@@ -577,7 +691,18 @@ export function routerFactory(client: Client): Router {
         return;
       }
 
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const result = await whatsappService.sendGroupMessage(groupId, message);
+
+      // Обновляем статистику отправленных сообщений
+      if (instanceId && result.messageId) {
+        instanceMemoryService.updateMessageStats(instanceId, 'sent');
+      }
+
       res.json(result);
     } catch (error) {
       if (error instanceof Error) {
@@ -602,7 +727,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/messages/{messageId}/media/download:
+   * /api/v1/messages/{messageId}/media/download:
    *   post:
    *     summary: Download media from a message
    *     parameters:
@@ -627,6 +752,11 @@ export function routerFactory(client: Client): Router {
       if (!messageId) {
         res.status(400).json({ error: 'Message ID is required' });
         return;
+      }
+
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
       }
 
       const mediaInfo = await whatsappService.downloadMediaFromMessage(messageId, mediaStoragePath);
@@ -659,7 +789,7 @@ export function routerFactory(client: Client): Router {
 
   /**
    * @swagger
-   * /api/send/media:
+   * /api/v1/send/media:
    *   post:
    *     summary: Send a media message to a WhatsApp contact
    *     requestBody:
@@ -701,11 +831,21 @@ export function routerFactory(client: Client): Router {
         return;
       }
 
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
       const result = await whatsappService.sendMediaMessage({
         number,
         source,
         caption,
       });
+
+      // Обновляем статистику отправленных сообщений
+      if (instanceId && result.messageId) {
+        instanceMemoryService.updateMessageStats(instanceId, 'sent');
+      }
 
       res.json(result);
     } catch (error) {
@@ -728,6 +868,373 @@ export function routerFactory(client: Client): Router {
       }
     }
   });
+
+  // Новые эндпоинты согласно пункту 9 плана разработки
+
+  /**
+   * @swagger
+   * /api/v1/account-info:
+   *   get:
+   *     summary: Get account information
+   *     tags: [Account]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Account information
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     account:
+   *                       type: string
+   *                     provider:
+   *                       type: string
+   *                     created_at:
+   *                       type: string
+   *                     updated_at:
+   *                       type: string
+   *       401:
+   *         description: Unauthorized
+   *       404:
+   *         description: Instance not found
+   *       500:
+   *         description: Server error
+   */
+  const getAccountInfo: RequestHandler = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
+      const pool = createPool();
+      const config = getDatabaseConfig();
+      const result = await pool.query(
+        `SELECT account, provider, created_at, updated_at 
+         FROM ${config.schema}.message_instances 
+         WHERE id = $1`,
+        [instanceId],
+      );
+
+      if (result.rows.length > 0) {
+        res.json({ success: true, data: result.rows[0] });
+      } else {
+        res.status(404).json({ success: false, error: 'Instance not found' });
+      }
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get account info',
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  /**
+   * @swagger
+   * /api/v1/webhook/config:
+   *   post:
+   *     summary: Update webhook configuration
+   *     tags: [Webhook]
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - url
+   *             properties:
+   *               url:
+   *                 type: string
+   *                 description: Webhook URL
+   *               headers:
+   *                 type: object
+   *                 description: Additional headers
+   *               enabled:
+   *                 type: boolean
+   *                 default: true
+   *     responses:
+   *       200:
+   *         description: Webhook configuration updated
+   *       400:
+   *         description: Bad request
+   *       401:
+   *         description: Unauthorized
+   *       500:
+   *         description: Server error
+   */
+  const updateWebhookConfig: RequestHandler = async (
+    req: Request,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
+      const { url, headers, enabled = true } = req.body;
+
+      if (!url) {
+        res.status(400).json({
+          success: false,
+          error: 'Webhook URL is required',
+        });
+        return;
+      }
+
+      const webhookConfig = { url, headers: headers || {}, enabled };
+
+      const pool = createPool();
+      const config = getDatabaseConfig();
+      await pool.query(
+        `UPDATE ${config.schema}.message_instances 
+         SET api_webhook_schema = $1, updated_at = NOW() 
+         WHERE id = $2`,
+        [JSON.stringify(webhookConfig), instanceId],
+      );
+
+      res.json({
+        success: true,
+        message: 'Webhook configuration updated',
+        data: webhookConfig,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update webhook config',
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  /**
+   * @swagger
+   * /api/v1/webhook/config:
+   *   get:
+   *     summary: Get webhook configuration
+   *     tags: [Webhook]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Webhook configuration
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *       401:
+   *         description: Unauthorized
+   *       404:
+   *         description: Instance not found
+   *       500:
+   *         description: Server error
+   */
+  const getWebhookConfig: RequestHandler = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
+      const pool = createPool();
+      const config = getDatabaseConfig();
+      const result = await pool.query(
+        `SELECT api_webhook_schema 
+         FROM ${config.schema}.message_instances 
+         WHERE id = $1`,
+        [instanceId],
+      );
+
+      if (result.rows.length > 0) {
+        res.json({
+          success: true,
+          data: result.rows[0].api_webhook_schema || {},
+        });
+      } else {
+        res.status(404).json({ success: false, error: 'Instance not found' });
+      }
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get webhook config',
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  // Новые эндпоинты для работы с сохраненными сообщениями
+  if (messageStorageService && instanceId) {
+    /**
+     * @swagger
+     * /api/v1/stored-messages:
+     *   get:
+     *     summary: Get stored messages for the current instance
+     *     parameters:
+     *       - in: query
+     *         name: chatId
+     *         schema:
+     *           type: string
+     *         description: Filter by specific chat ID
+     *       - in: query
+     *         name: limit
+     *         schema:
+     *           type: integer
+     *         description: Number of messages to retrieve (default: 50)
+     *       - in: query
+     *         name: offset
+     *         schema:
+     *           type: integer
+     *         description: Number of messages to skip (default: 0)
+     *       - in: query
+     *         name: isGroup
+     *         schema:
+     *           type: boolean
+     *         description: Filter by group messages (true) or private messages (false)
+     *     responses:
+     *       200:
+     *         description: Returns stored messages
+     *       500:
+     *         description: Server error
+     */
+    router.get('/stored-messages', async (req: Request, res: Response) => {
+      try {
+        const chatId = req.query.chatId as string;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const offset = parseInt(req.query.offset as string) || 0;
+        const isGroup =
+          req.query.isGroup === 'true' ? true : req.query.isGroup === 'false' ? false : undefined;
+
+        // Отмечаем использование API ключа
+        if (instanceId) {
+          instanceMemoryService.markApiKeyUsage(instanceId);
+        }
+
+        const messages = await messageStorageService.getMessages(instanceId, {
+          chatId,
+          limit,
+          offset,
+          isGroup,
+        });
+
+        res.json({
+          success: true,
+          data: messages,
+          count: messages.length,
+          pagination: {
+            limit,
+            offset,
+          },
+        });
+      } catch (error) {
+        logger.error('Failed to get stored messages', { error });
+        res.status(500).json({
+          success: false,
+          error: 'Failed to get stored messages',
+          details: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    /**
+     * @swagger
+     * /api/v1/stored-messages/stats:
+     *   get:
+     *     summary: Get message statistics for the current instance
+     *     responses:
+     *       200:
+     *         description: Returns message statistics
+     *       500:
+     *         description: Server error
+     */
+    router.get('/stored-messages/stats', async (_req: Request, res: Response) => {
+      try {
+        // Отмечаем использование API ключа
+        if (instanceId) {
+          instanceMemoryService.markApiKeyUsage(instanceId);
+        }
+
+        const stats = await messageStorageService.getMessageStats(instanceId);
+
+        res.json({
+          success: true,
+          data: stats,
+        });
+      } catch (error) {
+        logger.error('Failed to get message stats', { error });
+        res.status(500).json({
+          success: false,
+          error: 'Failed to get message stats',
+          details: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    /**
+     * @swagger
+     * /api/v1/stored-messages/cleanup:
+     *   post:
+     *     summary: Clean up old messages for the current instance
+     *     requestBody:
+     *       required: false
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               daysToKeep:
+     *                 type: integer
+     *                 description: Number of days to keep messages (default: 30)
+     *     responses:
+     *       200:
+     *         description: Returns cleanup results
+     *       500:
+     *         description: Server error
+     */
+    router.post('/stored-messages/cleanup', async (req: Request, res: Response) => {
+      try {
+        // Отмечаем использование API ключа
+        if (instanceId) {
+          instanceMemoryService.markApiKeyUsage(instanceId);
+        }
+
+        const daysToKeep = parseInt(req.body?.daysToKeep) || 30;
+        const deletedCount = await messageStorageService.cleanupOldMessages(instanceId, daysToKeep);
+
+        res.json({
+          success: true,
+          data: {
+            deletedCount,
+            daysToKeep,
+          },
+          message: `Cleaned up ${deletedCount} old messages`,
+        });
+      } catch (error) {
+        logger.error('Failed to cleanup old messages', { error });
+        res.status(500).json({
+          success: false,
+          error: 'Failed to cleanup old messages',
+          details: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+  }
+
+  router.get('/account-info', getAccountInfo);
+  router.post('/webhook/config', updateWebhookConfig);
+  router.get('/webhook/config', getWebhookConfig);
 
   return router;
 }

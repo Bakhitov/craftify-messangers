@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  instance-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.instance-manager
+    container_name: wweb-instance-manager-supabase
+    restart: always
+    env_file:
+      - env.supabase
+    environment:
+      # Supabase Database Configuration
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_HOST: ${DATABASE_HOST}
+      DATABASE_PORT: ${DATABASE_PORT}
+      DATABASE_NAME: ${DATABASE_NAME}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_SCHEMA: public
+      DATABASE_SSL: ${DATABASE_SSL:-true}
+      USE_SUPABASE: ${USE_SUPABASE:-true}
+      
+      # Instance Manager
+      INSTANCE_MANAGER_PORT: ${INSTANCE_MANAGER_PORT:-3000}
+      INSTANCE_MANAGER_BASE_URL: ${INSTANCE_MANAGER_BASE_URL}
+      
+      # Evolution API
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL}
+      EVOLUTION_API_MANAGER_URL: ${EVOLUTION_API_MANAGER_URL}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      EVOLUTION_API_GLOBAL_WEBHOOK_URL: ${EVOLUTION_API_GLOBAL_WEBHOOK_URL}
+      
+      # Security
+      JWT_SECRET: ${JWT_SECRET}
+      API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET}
+      
+      # Docker Configuration
+      DOCKER_HOST: ${DOCKER_HOST}
+      INSTANCE_NETWORK: ${INSTANCE_NETWORK}
+      INSTANCE_VOLUMES_PATH: ${INSTANCE_VOLUMES_PATH}
+      INSTANCE_COMPOSE_PATH: ${INSTANCE_COMPOSE_PATH}
+      
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./composes:/app/composes
+      - ./volumes:/app/volumes
+      - instance_logs:/app/logs
+    networks:
+      - wweb-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  instance_logs:
+    driver: local
+
+networks:
+  wweb-network:
+    driver: bridge 

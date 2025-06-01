@@ -1,501 +1,767 @@
-# WhatsApp Web MCP
+# 🚀 WWEB-MCP: WhatsApp & Telegram MCP Server
 
 [![PR Checks](https://github.com/pnizer/wweb-mcp/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/pnizer/wweb-mcp/actions/workflows/pr-checks.yml)
 
-A Node.js application that connects WhatsApp Web with AI models through the Model Context Protocol (MCP). This project provides a standardized interface for programmatic interaction with WhatsApp, enabling automated messaging, contact management, and group chat functionality through AI-driven workflows.
+Мощная система для интеграции WhatsApp Web и Telegram с AI моделями через Model Context Protocol (MCP). Поддерживает множественные инстансы, REST API и динамическое управление контейнерами.
 
-## Overview
+## 📋 Содержание
 
-WhatsApp Web MCP provides a seamless integration between WhatsApp Web and AI models by:
+- [🔍 Обзор](#-обзор)
+- [🏗️ Архитектура](#️-архитектура)
+- [⚡ Быстрый старт](#-быстрый-старт)
+- [🛠️ Разработка](#️-разработка)
+- [🚀 Production](#-production)
+- [📚 API Документация](#-api-документация)
+- [🧪 Тестирование](#-тестирование)
+- [🔧 Устранение неполадок](#-устранение-неполадок)
 
-- Creating a standardized interface through the Model Context Protocol (MCP)
-- Offering MCP Server access to WhatsApp functionality
-- Providing flexible deployment options through SSE or Command modes
-- Supporting both direct WhatsApp client integration and API-based connectivity
+## 🔍 Обзор
 
-## Disclaimer
+### Что это?
 
-**IMPORTANT**: This tool is for testing purposes only and should not be used in production environments.
+WWEB-MCP - это комплексная система, которая предоставляет:
 
-Disclaimer from WhatsApp Web project:
+- **WhatsApp Web API** - программный доступ к WhatsApp через whatsapp-web.js
+- **Telegram Bot API** - интеграция с Telegram через grammY библиотеку
+- **Instance Manager** - управление множественными инстансами в Docker контейнерах
+- **MCP Server** - интеграция с AI моделями (Claude) через Model Context Protocol
+- **REST API** - полноценный API для автоматизации сообщений
 
-> This project is not affiliated, associated, authorized, endorsed by, or in any way officially connected with WhatsApp or any of its subsidiaries or its affiliates. The official WhatsApp website can be found at whatsapp.com. "WhatsApp" as well as related names, marks, emblems and images are registered trademarks of their respective owners. Also it is not guaranteed you will not be blocked by using this method. WhatsApp does not allow bots or unofficial clients on their platform, so this shouldn't be considered totally safe.
+### Основные возможности
 
-## Learning Resources
+✅ **Множественные инстансы** - создание и управление несколькими WhatsApp/Telegram инстансами  
+✅ **Docker интеграция** - автоматическое создание и управление контейнерами  
+✅ **Hot reload** - быстрая разработка с автоматической пересборкой  
+✅ **REST API** - полный набор endpoints для интеграции  
+✅ **Webhook поддержка** - получение событий в реальном времени  
+✅ **Database integration** - PostgreSQL для хранения метаданных  
+✅ **Production ready** - готовая конфигурация с Nginx и SSL  
 
-To learn more about using WhatsApp Web MCP in real-world scenarios, check out these articles:
+### ⚠️ Важно
 
-- [**Integrating WhatsApp with AI: Guide to Setting Up a WhatsApp MCP server**](https://medium.com/@pnizer/integrating-whatsapp-with-ai-a-complete-guide-to-setting-up-whatsapp-web-mcp-with-claude-and-f7a2180dca78)
-- [**Integrating OpenAI Agents Python SDK with Anthropic's MCP**](https://medium.com/@pnizer/integrating-openai-agents-python-sdk-with-anthropics-mcp-229c686d9033)
+> **Этот проект предназначен только для тестирования и не должен использоваться в продакшн среде с реальными пользователями WhatsApp.** WhatsApp не разрешает ботов или неофициальных клиентов на своей платформе.
 
-## Installation
+## 🏗️ Архитектура
 
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/pnizer/wweb-mcp.git
-   cd wweb-mcp
-   ```
-
-2. Install globally or use with npx:
-
-   ```bash
-   # Install globally
-   npm install -g .
-
-   # Or use with npx directly
-   npx .
-   ```
-
-3. Build with Docker:
-   ```bash
-   docker build . -t wweb-mcp:latest
-   ```
-
-## Configuration
-
-### Command Line Options
-
-| Option | Alias | Description | Choices | Default |
-|--------|-------|-------------|---------|---------|
-| `--mode` | `-m` | Run mode | `mcp`, `whatsapp-api` | `mcp` |
-| `--mcp-mode` | `-c` | MCP connection mode | `standalone`, `api` | `standalone` |
-| `--transport` | `-t` | MCP transport mode | `sse`, `command` | `sse` |
-| `--sse-port` | `-p` | Port for SSE server | - | `3002` |
-| `--api-port` | - | Port for WhatsApp API server | - | `3001` |
-| `--auth-data-path` | `-a` | Path to store authentication data | - | `.wwebjs_auth` |
-| `--auth-strategy` | `-s` | Authentication strategy | `local`, `none` | `local` |
-| `--api-base-url` | `-b` | API base URL for MCP when using api mode | - | `http://localhost:3001/api` |
-| `--api-key` | `-k` | API key for WhatsApp Web REST API when using api mode | - | `''` |
-
-### API Key Authentication
-
-When running in API mode, the WhatsApp API server requires authentication using an API key. The API key is automatically generated when you start the WhatsApp API server and is displayed in the logs:
+### Компоненты системы
 
 ```
-WhatsApp API key: 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+┌─────────────────────────────────────────────────────────────┐
+│                    WWEB-MCP СИСТЕМА                         │
+├─────────────────────────────────────────────────────────────┤
+│  🎯 Instance Manager (Порт 3000)                           │
+│  ├── REST API для управления инстансами                     │
+│  ├── Docker Service (создание контейнеров)                  │
+│  ├── Database Service (PostgreSQL)                          │
+│  └── Health Monitoring                                      │
+├─────────────────────────────────────────────────────────────┤
+│  📱 WhatsApp Instances (Динамические порты 3001-7999)      │
+│  ├── WhatsApp Web Client (puppeteer + whatsapp-web.js)     │
+│  ├── REST API (/api/v1/whatsapp)                           │
+│  ├── MCP Server интеграция                                 │
+│  └── Webhook поддержка                                      │
+├─────────────────────────────────────────────────────────────┤
+│  💬 Telegram Instances (Динамические порты 4001-8999)      │
+│  ├── Telegram Bot (grammY)                                 │
+│  ├── REST API (/api/v1/telegram)                           │
+│  ├── Bot Token аутентификация                               │
+│  └── Webhook поддержка                                      │
+├─────────────────────────────────────────────────────────────┤
+│  🧠 MCP Server (Динамические порты)                        │
+│  ├── Model Context Protocol интеграция                      │
+│  ├── AI Tools для WhatsApp и Telegram                      │
+│  └── SSE/Command транспорт                                  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-To connect the MCP server to the WhatsApp API server, you need to provide this API key using the `--api-key` or `-k` option:
+### Режимы работы
+
+| Режим | Описание | Энтрипоинт | Порт |
+|-------|----------|------------|------|
+| **Instance Manager** | Управление инстансами | `main-instance-manager.js` | 3000 (фиксированный) |
+| **WhatsApp API** | Standalone WhatsApp API | `main.js -m whatsapp-api` | Динамический |
+| **Telegram API** | Standalone Telegram API | `main.js -m telegram-api` | Динамический |
+| **MCP Server** | AI интеграция | `main.js -m mcp` | Динамический |
+
+## ⚡ Быстрый старт
+
+### Системные требования
+
+- **Node.js** >= 18.0.0
+- **Docker** + Docker Compose
+- **PostgreSQL** >= 12 (для Instance Manager)
+- **4GB RAM** минимум для запуска нескольких инстансов
+
+### macOS (разработка)
+```bash
+# Установка Colima (альтернатива Docker Desktop)
+brew install colima docker docker-compose
+colima start
+
+# Клонирование проекта
+git clone https://github.com/pnizer/wweb-mcp.git
+cd wweb-mcp
+
+# Автоматическая установка
+chmod +x install.sh
+./install.sh
+```
+
+### Linux (production)
+```bash
+# Установка Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+
+# Клонирование и установка
+git clone https://github.com/pnizer/wweb-mcp.git
+cd wweb-mcp
+chmod +x install.sh
+./install.sh
+```
+
+### Быстрая проверка установки
 
 ```bash
-npx wweb-mcp --mode mcp --mcp-mode api --api-base-url http://localhost:3001/api --api-key 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+# Проверка сборки
+npm run build
+
+# Health check
+npm start -- --mode whatsapp-api &
+sleep 5
+curl http://localhost:$(docker logs wweb-mcp-whatsapp-api-1 2>&1 | grep "listening on port" | tail -1 | grep -o '[0-9]*')/api/health
 ```
 
-The API key is stored in the authentication data directory (specified by `--auth-data-path`) and persists between restarts of the WhatsApp API server.
+## 🛠️ Разработка
 
-### Authentication Methods
+### Конфигурация для разработки
 
-#### Local Authentication (Recommended)
+Создайте `.env.development`:
 
-- Scan QR code once
-- Credentials persist between sessions
-- More stable for long-term operation
+```bash
+# ===========================================
+# DEVELOPMENT КОНФИГУРАЦИЯ (macOS/Colima)
+# ===========================================
 
-#### No Authentication
+# Режим разработки
+NODE_ENV=development
+LOG_LEVEL=debug
 
-- Default method
-- Requires QR code scan on each startup
-- Suitable for testing and development
+# База данных (локальная или в контейнере)
+DATABASE_HOST=host.docker.internal
+DATABASE_PORT=5432
+DATABASE_NAME=ai
+DATABASE_USER=ai
+DATABASE_PASSWORD=ai
+DATABASE_SCHEMA=ai
 
-### Webhook Configuration
+# Instance Manager
+INSTANCE_MANAGER_PORT=3000
+INSTANCE_MANAGER_BASE_URL=http://localhost:3000
 
-You can configure webhooks to receive incoming WhatsApp messages by creating a `webhook.json` file in your authentication data directory (specified by `--auth-data-path`).
+# Docker настройки для macOS Colima
+DOCKER_SOCKET_PATH=/Users/$(whoami)/.colima/default/docker.sock
 
-#### Webhook JSON Format
+# Диапазон портов
+BASE_PORT_RANGE_START=3001
+BASE_PORT_RANGE_END=7999
+TELEGRAM_BASE_PORT_RANGE_START=4001
+TELEGRAM_BASE_PORT_RANGE_END=8999
 
-```json
+# Пути (относительные для dev)
+COMPOSE_FILES_PATH=./composes
+VOLUMES_PATH=./volumes
+
+# WhatsApp настройки
+WHATSAPP_AUTH_STRATEGY=local
+WHATSAPP_MAX_CONNECTIONS=5
+
+# Telegram настройки (получите токен у @BotFather)
+TELEGRAM_BOT_TOKEN=YOUR_BOT_TOKEN_HERE
+TELEGRAM_ENABLED=true
+
+# AI интеграция (для тестирования)
+AGNO_API_BASE_URL=http://host.docker.internal:8000
+AGNO_API_TIMEOUT=10000
+AGNO_ENABLED=false
+```
+
+### Запуск в режиме разработки
+
+```bash
+# 1. Копируем dev конфигурацию
+cp .env.development .env
+
+# 2. Запуск с hot reload (рекомендуется)
+chmod +x dev-watch.sh
+./dev-watch.sh
+
+# Или ручной запуск Instance Manager
+docker-compose -f docker-compose.instance-manager.yml up -d --build
+
+# 3. Проверка статуса
+curl http://localhost:3000/health
+```
+
+### Структура development окружения
+
+```bash
+wweb-mcp/
+├── .env                     # Активная конфигурация  
+├── .env.development         # Dev шаблон
+├── composes/               # Генерируемые compose файлы
+│   └── instance-*.yml
+├── volumes/                # Данные инстансов
+│   ├── instance-{id}/
+│   │   ├── whatsapp_auth/
+│   │   └── telegram_auth/
+├── logs/                   # Логи всех контейнеров
+└── dist/                   # Собранный код (auto-rebuild)
+```
+
+### Hot Reload разработка
+
+Hot reload настроен для быстрой разработки:
+
+1. **TypeScript Watch** - автоматическая пересборка при изменении `.ts` файлов
+2. **Volume Mapping** - изменения попадают в контейнер без пересборки
+3. **Nodemon** - автоматический перезапуск сервисов
+
+```bash
+# Запуск hot reload
+./dev-watch.sh
+
+# В другом терминале - изменяйте код
+# Изменения в src/ автоматически компилируются в dist/
+# Instance Manager автоматически перезапускается
+```
+
+### Полезные команды для разработки
+
+```bash
+# Логи Instance Manager
+docker logs wweb-mcp-instance-manager-1 -f
+
+# Создание тестового WhatsApp инстанса
+curl -X POST http://localhost:3000/api/v1/instances \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "dev-test", "provider": "whatsappweb", "type_instance": ["api"]}'
+
+# Создание тестового Telegram инстанса
+curl -X POST http://localhost:3000/api/v1/instances \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "dev-test", "provider": "telegram", "type_instance": ["api"], "api_key": "YOUR_BOT_TOKEN"}'
+
+# Список всех инстансов
+curl http://localhost:3000/api/v1/instances
+
+# Список Docker контейнеров
+docker ps --filter "name=wweb-mcp"
+
+# Очистка всех контейнеров
+docker-compose -f docker-compose.instance-manager.yml down
+docker system prune -f
+```
+
+## 🚀 Production
+
+### Конфигурация для production
+
+Создайте `.env.production`:
+
+```bash
+# ===========================================
+# PRODUCTION КОНФИГУРАЦИЯ (Linux Server)
+# ===========================================
+
+# Режим production
+NODE_ENV=production
+LOG_LEVEL=info
+
+# База данных (в Docker)
+DATABASE_HOST=postgres
+DATABASE_PORT=5432
+DATABASE_NAME=ai
+DATABASE_USER=ai
+DATABASE_PASSWORD=SUPER_SECURE_PASSWORD_CHANGE_ME_2025
+DATABASE_SCHEMA=ai
+
+# Instance Manager
+INSTANCE_MANAGER_PORT=3000
+INSTANCE_MANAGER_BASE_URL=https://your-domain.com
+
+# Docker настройки для Linux
+DOCKER_SOCKET_PATH=/var/run/docker.sock
+
+# Диапазон портов
+BASE_PORT_RANGE_START=3001
+BASE_PORT_RANGE_END=7999
+TELEGRAM_BASE_PORT_RANGE_START=4001
+TELEGRAM_BASE_PORT_RANGE_END=8999
+
+# Пути (абсолютные для production)
+COMPOSE_FILES_PATH=/app/composes
+VOLUMES_PATH=/app/volumes
+
+# Security
+WHATSAPP_AUTH_STRATEGY=local
+WHATSAPP_MAX_CONNECTIONS=20
+
+# AI интеграция (production API)
+AGNO_API_BASE_URL=https://agno-api.your-domain.com
+AGNO_API_TIMEOUT=15000
+AGNO_ENABLED=true
+
+# SSL (для Nginx)
+SSL_CERT_PATH=/etc/ssl/certs/your-domain.crt
+SSL_KEY_PATH=/etc/ssl/private/your-domain.key
+```
+
+### Развертывание production
+
+```bash
+# 1. Подготовка сервера
+sudo apt update && sudo apt upgrade -y
+sudo apt install docker.io docker-compose postgresql-client nginx certbot
+
+# 2. Клонирование и настройка
+git clone https://github.com/pnizer/wweb-mcp.git
+cd wweb-mcp
+
+# 3. Настройка production конфигурации
+cp .env.production .env
+nano .env  # Отредактируйте пароли и домены
+
+# 4. Создание SSL сертификатов
+sudo certbot certonly --nginx -d your-domain.com
+sudo cp /etc/letsencrypt/live/your-domain.com/fullchain.pem ./ssl/
+sudo cp /etc/letsencrypt/live/your-domain.com/privkey.pem ./ssl/
+
+# 5. Запуск production стека
+docker-compose -f docker-compose.production.yml up -d --build
+
+# 6. Проверка
+curl https://your-domain.com/health
+```
+
+### Production архитектура
+
+```yaml
+# docker-compose.production.yml
+services:
+  postgres:          # PostgreSQL база данных
+    image: postgres:16-alpine
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck: [pg_isready]
+    
+  instance-manager:  # Основной сервис управления
+    build: {dockerfile: Dockerfile.instance-manager}
+    depends_on: [postgres]
+    volumes: [/var/run/docker.sock, ./composes, ./volumes]
+    
+  nginx:             # Reverse proxy + SSL
+    image: nginx:alpine
+    volumes: [./nginx.conf, ./ssl]
+    ports: ["80:80", "443:443"]
+```
+
+### Мониторинг production
+
+```bash
+# Проверка статуса всех сервисов
+docker-compose -f docker-compose.production.yml ps
+
+# Логи
+docker-compose -f docker-compose.production.yml logs -f
+
+# Health checks
+curl https://your-domain.com/health
+curl https://your-domain.com/api/v1/instances
+
+# Мониторинг ресурсов
+docker stats
+
+# Backup базы данных
+docker exec postgres_container pg_dump -U ai ai > backup_$(date +%Y%m%d).sql
+```
+
+### Обновление production
+
+```bash
+# 1. Создание backup
+docker exec wweb-postgres pg_dump -U ai ai > backup_before_update.sql
+
+# 2. Остановка сервисов
+docker-compose -f docker-compose.production.yml down
+
+# 3. Обновление кода
+git pull origin main
+npm ci --omit=dev
+npm run build
+
+# 4. Пересборка образов
+docker-compose -f docker-compose.production.yml build --no-cache
+
+# 5. Запуск обновленных сервисов
+docker-compose -f docker-compose.production.yml up -d
+
+# 6. Проверка
+curl https://your-domain.com/health
+```
+
+## 📚 API Документация
+
+### Instance Manager API
+
+**Base URL:** `http://localhost:3000/api/v1`
+
+#### Управление инстансами
+
+```bash
+# Получить все инстансы
+GET /instances
+
+# Создать новый инстанс
+POST /instances
 {
-  "url": "https://your-webhook-endpoint.com/incoming",
-  "authToken": "your-optional-authentication-token",
-  "filters": {
-    "allowedNumbers": ["+1234567890", "+0987654321"],
-    "allowPrivate": true,
-    "allowGroups": false
+  "user_id": "user123",
+  "provider": "whatsappweb|telegram", 
+  "type_instance": ["api"],
+  "api_key": "telegram_bot_token",  // только для Telegram
+  "api_webhook_schema": {
+    "enabled": true,
+    "url": "https://your-webhook.com/webhook"
   }
 }
+
+# Получить инстанс
+GET /instances/{id}
+
+# Запустить инстанс (создать Docker контейнер)
+POST /instances/{id}/process
+
+# Запустить контейнер
+POST /instances/{id}/start
+
+# Остановить контейнер  
+POST /instances/{id}/stop
+
+# Перезапустить контейнер
+POST /instances/{id}/restart
+
+# Удалить инстанс
+DELETE /instances/{id}
+
+# Получить логи инстанса
+GET /instances/{id}/logs
+
+# Получить статус QR кода (WhatsApp)
+GET /instances/{id}/qr-status
+
+# Получить QR код (WhatsApp)
+GET /instances/{id}/qr
 ```
 
-#### Configuration Options
+#### System API
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `url` | String | The webhook endpoint URL where message data will be sent |
-| `authToken` | String (optional) | Authentication token to be included in the Authorization header as a Bearer token |
-| `filters.allowedNumbers` | Array (optional) | List of phone numbers to accept messages from. If provided, only messages from these numbers will trigger the webhook |
-| `filters.allowPrivate` | Boolean (optional) | Whether to send private messages to the webhook. Default: `true` |
-| `filters.allowGroups` | Boolean (optional) | Whether to send group messages to the webhook. Default: `true` |
+```bash
+# Health check
+GET /health
 
-#### Webhook Payload
+# Статистика системы
+GET /api/v1/system/stats
 
-When a message is received and passes the filters, a POST request will be sent to the configured URL with the following JSON payload:
+# Список Docker контейнеров
+GET /api/v1/system/containers
 
-```json
+# Информация о портах
+GET /api/v1/system/ports
+```
+
+### WhatsApp Instance API
+
+**Base URL:** `http://localhost:{динамический_порт}/api/v1/whatsapp`
+
+```bash
+# Статус клиента
+GET /status
+
+# Отправить сообщение
+POST /send-message
 {
-  "from": "+1234567890",
-  "name": "Contact Name",
-  "message": "Hello, world!",
-  "isGroup": false,
-  "timestamp": 1621234567890,
-  "messageId": "ABCDEF1234567890"
+  "to": "79161234567@c.us",
+  "message": "Привет из WhatsApp!"
+}
+
+# Отправить медиа
+POST /send-media
+{
+  "to": "79161234567@c.us", 
+  "media": "base64_or_url",
+  "caption": "Описание медиа"
+}
+
+# Получить чаты
+GET /chats
+
+# Получить контакты
+GET /contacts
+
+# Получить сообщения чата
+GET /chats/{chatId}/messages
+
+# Создать группу
+POST /groups
+{
+  "name": "Моя группа",
+  "participants": ["79161234567@c.us"]
 }
 ```
 
-## Usage
+### Telegram Instance API
 
-### Running Modes
-
-#### WhatsApp API Server
-
-Run a standalone WhatsApp API server that exposes WhatsApp functionality through REST endpoints:
+**Base URL:** `http://localhost:{динамический_порт}/api/v1/telegram`
 
 ```bash
-npx wweb-mcp --mode whatsapp-api --api-port 3001
+# Информация о боте
+GET /me
+
+# Отправить сообщение
+POST /send-message
+{
+  "chatId": "123456789",
+  "message": "Привет из Telegram!"
+}
+
+# Отправить медиа
+POST /send-media
+{
+  "chatId": "123456789",
+  "source": "https://example.com/image.jpg",
+  "caption": "Описание"
+}
+
+# Статус бота
+GET /status
+
+# Получить обновления
+GET /updates
+
+# Установить webhook
+POST /webhook
+{
+  "url": "https://your-domain.com/webhook"
+}
 ```
 
-#### MCP Server (Standalone)
+## 🧪 Тестирование
 
-Run an MCP server that directly connects to WhatsApp Web:
+### Unit тесты
 
 ```bash
-npx wweb-mcp --mode mcp --mcp-mode standalone --transport sse --sse-port 3002
-```
-
-#### MCP Server (API Client)
-
-Run an MCP server that connects to the WhatsApp API server:
-
-```bash
-# First, start the WhatsApp API server and note the API key from the logs
-npx wweb-mcp --mode whatsapp-api --api-port 3001
-
-# Then, start the MCP server with the API key
-npx wweb-mcp --mode mcp --mcp-mode api --api-base-url http://localhost:3001/api --api-key YOUR_API_KEY --transport sse --sse-port 3002
-```
-
-### Available Tools
-
-
-| Tool | Description | Parameters |
-|------|-------------|------------|
-| `get_status` | Check WhatsApp client connection status | None |
-| `send_message` | Send messages to WhatsApp contacts | `number`: Phone number to send to<br>`message`: Text content to send |
-| `search_contacts` | Search for contacts by name or number | `query`: Search term to find contacts |
-| `get_messages` | Retrieve messages from a specific chat | `number`: Phone number to get messages from<br>`limit` (optional): Number of messages to retrieve |
-| `get_chats` | Get a list of all WhatsApp chats | None |
-| `create_group` | Create a new WhatsApp group | `name`: Name of the group<br>`participants`: Array of phone numbers to add |
-| `add_participants_to_group` | Add participants to an existing group | `groupId`: ID of the group<br>`participants`: Array of phone numbers to add |
-| `get_group_messages` | Retrieve messages from a group | `groupId`: ID of the group<br>`limit` (optional): Number of messages to retrieve |
-| `send_group_message` | Send a message to a group | `groupId`: ID of the group<br>`message`: Text content to send |
-| `search_groups` | Search for groups by name, description, or member names | `query`: Search term to find groups |
-| `get_group_by_id` | Get detailed information about a specific group | `groupId`: ID of the group to get |
-| `download_media_from_message` | Download media from a message | `messageId`: ID of the message containing media to download |
-| `send_media_message` | Send a media message to a WhatsApp contact | `number`: Phone number to send to<br>`source`: Media source with URI scheme (use `http://` or `https://` for URLs, `file://` for local files)<br>`caption` (optional): Text caption for the media |
-
-### Available Resources
-
-| Resource URI | Description |
-|--------------|-------------|
-| `whatsapp://contacts` | List of all WhatsApp contacts |
-| `whatsapp://messages/{number}` | Messages from a specific chat |
-| `whatsapp://chats` | List of all WhatsApp chats |
-| `whatsapp://groups` | List of all WhatsApp groups |
-| `whatsapp://groups/search` | Search for groups by name, description, or member names |
-| `whatsapp://groups/{groupId}/messages` | Messages from a specific group |
-
-### REST API Endpoints
-
-#### Contacts & Messages
-
-| Endpoint | Method | Description | Parameters |
-|----------|--------|-------------|------------|
-| `/api/status` | GET | Get WhatsApp connection status | None |
-| `/api/contacts` | GET | Get all contacts | None |
-| `/api/contacts/search` | GET | Search for contacts | `query`: Search term |
-| `/api/chats` | GET | Get all chats | None |
-| `/api/messages/{number}` | GET | Get messages from a chat | `limit` (query): Number of messages |
-| `/api/send` | POST | Send a message | `number`: Recipient<br>`message`: Message content |
-| `/api/send/media` | POST | Send a media message | `number`: Recipient<br>`source`: Media source with URI scheme (use `http://` or `https://` for URLs, `file://` for local files)<br>`caption` (optional): Text caption |
-| `/api/messages/{messageId}/media/download` | POST | Download media from a message | None |
-
-#### Group Management
-
-| Endpoint | Method | Description | Parameters |
-|----------|--------|-------------|------------|
-| `/api/groups` | GET | Get all groups | None |
-| `/api/groups/search` | GET | Search for groups | `query`: Search term |
-| `/api/groups/create` | POST | Create a new group | `name`: Group name<br>`participants`: Array of numbers |
-| `/api/groups/{groupId}` | GET | Get detailed information about a specific group | None |
-| `/api/groups/{groupId}/messages` | GET | Get messages from a group | `limit` (query): Number of messages |
-| `/api/groups/{groupId}/participants/add` | POST | Add members to a group | `participants`: Array of numbers |
-| `/api/groups/send` | POST | Send a message to a group | `groupId`: Group ID<br>`message`: Message content |
-
-### AI Integration
-
-#### Claude Desktop Integration
-
-##### Option 1: Using NPX
-
-1. Start WhatsApp API server:
-
-   ```bash
-   npx wweb-mcp -m whatsapp-api -s local
-   ```
-
-2. Scan the QR code with your WhatsApp mobile app
-
-3. Note the API key displayed in the logs:
-
-   ```
-   WhatsApp API key: 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
-   ```
-
-4. Add the following to your Claude Desktop configuration:
-   ```json
-   {
-       "mcpServers": {
-           "whatsapp": {
-               "command": "npx",
-               "args": [
-                   "wweb-mcp",
-                   "-m", "mcp",
-                   "-s", "local",
-                   "-c", "api",
-                   "-t", "command",
-                   "--api-base-url", "http://localhost:3001/api",
-                   "--api-key", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-               ]
-           }
-       }
-   }
-   ```
-
-##### Option 2: Using Docker
-
-1. Start WhatsApp API server in Docker:
-
-   ```bash
-   docker run -i -p 3001:3001 -v wweb-mcp:/wwebjs_auth --rm wweb-mcp:latest -m whatsapp-api -s local -a /wwebjs_auth
-   ```
-
-2. Scan the QR code with your WhatsApp mobile app
-
-3. Note the API key displayed in the logs:
-
-   ```
-   WhatsApp API key: 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
-   ```
-
-4. Add the following to your Claude Desktop configuration:
-
-   ```json
-   {
-       "mcpServers": {
-           "whatsapp": {
-               "command": "docker",
-               "args": [
-                   "run",
-                   "-i",
-                   "--rm",
-                   "wweb-mcp:latest",
-                   "-m", "mcp",
-                   "-s", "local",
-                   "-c", "api",
-                   "-t", "command",
-                   "--api-base-url", "http://host.docker.internal:3001/api",
-                   "--api-key", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-               ]
-           }
-       }
-   }
-   ```
-
-5. Restart Claude Desktop
-6. The WhatsApp functionality will be available through Claude's interface
-
-## Architecture
-
-The project is structured with a clean separation of concerns:
-
-### Components
-
-1. **WhatsAppService**: Core business logic for interacting with WhatsApp
-2. **WhatsAppApiClient**: Client for connecting to the WhatsApp API
-3. **API Router**: Express routes for the REST API
-4. **MCP Server**: Model Context Protocol implementation
-
-### Deployment Options
-
-1. **WhatsApp API Server**: Standalone REST API server
-2. **MCP Server (Standalone)**: Direct connection to WhatsApp Web
-3. **MCP Server (API Client)**: Connection to WhatsApp API server
-
-This architecture allows for flexible deployment scenarios, including:
-
-- Running the API server and MCP server on different machines
-- Using the MCP server as a client to an existing API server
-- Running everything on a single machine for simplicity
-
-## Development
-
-### Project Structure
-
-```
-src/
-├── whatsapp-client.ts     # WhatsApp Web client implementation
-├── whatsapp-service.ts    # Core business logic
-├── whatsapp-api-client.ts # Client for the WhatsApp API
-├── api.ts                 # REST API router
-├── mcp-server.ts          # MCP protocol implementation
-└── main.ts                # Application entry point
-```
-
-### Building from Source
-
-```bash
-npm run build
-```
-
-### Testing
-
-The project uses Jest for unit testing. To run the tests:
-
-```bash
-# Run all tests
+# Запуск всех тестов
 npm test
 
-# Run tests in watch mode during development
+# Watch режим
 npm run test:watch
 
-# Generate test coverage report
+# Покрытие кода
 npm run test:coverage
+
+# Только unit тесты
+npm run test -- --testPathPattern=unit
 ```
 
-### Linting and Formatting
-
-The project uses ESLint and Prettier for code quality and formatting:
+### Интеграционные тесты
 
 ```bash
-# Run linter
-npm run lint
+# Подготовка тестовой базы
+createdb wweb_test
+PGPASSWORD=ai psql -h localhost -p 5432 -U ai -d wweb_test -f db/migrations/init.sql
 
-# Fix linting issues automatically
-npm run lint:fix
+# Запуск интеграционных тестов
+TEST_MODE=integration npm test
 
-# Format code with Prettier
-npm run format
+# Тестирование WhatsApp API
+node telegram-integration-test.js
 
-# Validate code (lint + test)
-npm run validate
+# Тестирование Telegram API  
+node telegram-fixed-test.js
+
+# E2E тесты
+npm run test:e2e
 ```
 
-The linting configuration enforces TypeScript best practices and maintains consistent code style across the project.
-
-### Publishing
-
-The project uses GitHub Actions for automated publishing to npm. The workflow handles:
-
-1. Version incrementing (`patch`, `minor`, or `major`)
-2. Git tagging with version prefixed by 'v' (e.g., v0.2.1)
-3. Publishing to npm with GitHub secrets
-
-To release a new version:
-
-1. Go to the GitHub repository Actions tab
-2. Select the "Publish Package" workflow
-3. Click "Run workflow"
-4. Choose the version increment type (patch, minor, or major)
-5. Click "Run workflow" to start the publishing process
-
-This workflow requires an NPM_TOKEN secret to be configured in your GitHub repository.
-
-## Troubleshooting
-
-### Claude Desktop Integration Issues
-
-- It's not possible to start wweb-mcp in command standalone mode on Claude because Claude opens more than one process, multiple times, and each wweb-mcp needs to open a puppeteer session that cannot share the same WhatsApp authentication. Because of this limitation, we've split the app into MCP and API modes to allow for proper integration with Claude.
-
-## Features
-
-- Sending and receiving messages
-- Sending media messages (images only)
-- Downloading media from messages (images, audio, documents)
-- Group chat management
-- Contact management and search
-- Message history retrieval
-
-## Upcoming Features
-
-- Support for sending all media file types (video, audio, documents)
-- Enhanced message templates for common scenarios
-- Advanced group management features
-- Contact management (add/remove contacts)
-- Enhanced error handling and recovery
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to your branch
-5. Create a Pull Request
-
-Please ensure your PR:
-
-- Follows the existing code style
-- Includes appropriate tests
-- Updates documentation as needed
-- Describes the changes in detail
-
-## Dependencies
-
-### WhatsApp Web.js
-
-This project uses [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js), an unofficial JavaScript client library for WhatsApp Web that connects through the WhatsApp Web browser app. For more information, visit the [whatsapp-web.js GitHub repository](https://github.com/pedroslopez/whatsapp-web.js).
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Logging
-
-WhatsApp Web MCP includes a robust logging system built with Winston. The logging system provides:
-
-- Multiple log levels (error, warn, info, http, debug)
-- Console output with colorized logs
-- HTTP request/response logging for API endpoints
-- Structured error handling
-- Environment-aware log levels (development vs. production)
-- All logs directed to stderr when running in MCP command mode
-
-### Log Levels
-
-The application supports the following log levels, in order of verbosity:
-
-1. **error** - Critical errors that prevent the application from functioning
-2. **warn** - Warnings that don't stop the application but require attention
-3. **info** - General information about application state and events
-4. **http** - HTTP request/response logging
-5. **debug** - Detailed debugging information
-
-### Configuring Log Level
-
-You can configure the log level when starting the application using the `--log-level` or `-l` flag:
+### Нагрузочное тестирование
 
 ```bash
-npm start -- --log-level=debug
+# Установка K6
+brew install k6  # macOS
+sudo apt install k6  # Linux
+
+# Тест создания инстансов
+k6 run test/load/instances.js
+
+# Тест API endpoints
+k6 run test/load/api.js
 ```
 
-Or when using the global installation:
+### Проверка в реальном времени
 
 ```bash
-wweb-mcp --log-level=debug
+# 1. Запуск Instance Manager
+docker-compose -f docker-compose.instance-manager.yml up -d
+
+# 2. Создание WhatsApp инстанса
+INSTANCE_ID=$(curl -s -X POST http://localhost:3000/api/v1/instances \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "test", "provider": "whatsappweb", "type_instance": ["api"]}' \
+  | jq -r '.instance.id')
+
+# 3. Запуск инстанса
+curl -X POST http://localhost:3000/api/v1/instances/$INSTANCE_ID/process
+curl -X POST http://localhost:3000/api/v1/instances/$INSTANCE_ID/start
+
+# 4. Получение QR кода
+curl http://localhost:3000/api/v1/instances/$INSTANCE_ID/qr
+
+# 5. Отправка тестового сообщения (после сканирования QR)
+API_PORT=$(docker port wweb-mcp-${INSTANCE_ID} | cut -d: -f2)
+curl -X POST http://localhost:$API_PORT/api/v1/whatsapp/send-message \
+  -H "Content-Type: application/json" \
+  -d '{"to": "79161234567@c.us", "message": "Тест из API!"}'
 ```
 
-### Command Mode Logging
+## 🔧 Устранение неполадок
 
-When running in MCP command mode (`--mode mcp --transport command`), all logs are directed to stderr. This is important for command-line tools where stdout might be used for data output while stderr is used for logging and diagnostics. This ensures that the MCP protocol communication over stdout is not interfered with by log messages.
+### Типичные проблемы
 
-### Test Environment
+#### 1. Docker Socket недоступен (macOS)
 
-In test environments (when `NODE_ENV=test` or when running with Jest), the logger automatically adjusts its behavior to be suitable for testing environments.
+```bash
+# Проблема: Cannot connect to Docker daemon
+# Решение: Проверьте путь к Colima socket
+ls -la ~/.colima/default/docker.sock
+
+# Обновите .env
+DOCKER_SOCKET_PATH=/Users/$(whoami)/.colima/default/docker.sock
+```
+
+#### 2. Порты заняты
+
+```bash
+# Найти процесс на порту
+lsof -i :3000
+
+# Убить процесс
+kill -9 $(lsof -t -i:3000)
+
+# Освободить диапазон портов
+./get-ports.sh
+```
+
+#### 3. WhatsApp не подключается
+
+```bash
+# Проверка логов
+docker logs wweb-mcp-{instance_id} -f
+
+# Очистка данных аутентификации
+rm -rf volumes/instance-{id}/whatsapp_auth
+
+# Перезапуск инстанса
+curl -X POST http://localhost:3000/api/v1/instances/{id}/restart
+```
+
+#### 4. База данных недоступна
+
+```bash
+# Проверка подключения
+PGPASSWORD=ai psql -h localhost -p 5432 -U ai -d ai -c "SELECT 1;"
+
+# Инициализация схемы
+PGPASSWORD=ai psql -h localhost -p 5432 -U ai -d ai -f db/migrations/versions/init.sql
+
+# Проверка таблиц
+PGPASSWORD=ai psql -h localhost -p 5432 -U ai -d ai -c "\dt ai.*"
+```
+
+#### 5. Instance Manager не запускается
+
+```bash
+# Проверка образа
+docker images | grep wweb-mcp
+
+# Пересборка
+docker-compose -f docker-compose.instance-manager.yml build --no-cache
+
+# Проверка volume mapping
+docker-compose -f docker-compose.instance-manager.yml config
+```
+
+### Логи и отладка
+
+```bash
+# Основные логи
+docker logs wweb-mcp-instance-manager-1 -f
+
+# Логи конкретного инстанса
+docker logs wweb-mcp-{instance_id} -f
+
+# Системные логи
+journalctl -u docker.service -f
+
+# Логи с фильтрацией
+docker logs wweb-mcp-instance-manager-1 2>&1 | grep ERROR
+
+# Экспорт логов
+docker logs wweb-mcp-instance-manager-1 > debug.log 2>&1
+```
+
+### Очистка и сброс
+
+```bash
+# Полная очистка
+docker-compose -f docker-compose.instance-manager.yml down
+docker system prune -a --volumes -f
+rm -rf volumes/ composes/ logs/
+
+# Сброс базы данных
+PGPASSWORD=ai psql -h localhost -p 5432 -U ai -d ai -c "DROP SCHEMA ai CASCADE; CREATE SCHEMA ai;"
+
+# Переустановка
+./install.sh
+```
+
+### Производительность
+
+```bash
+# Мониторинг ресурсов
+docker stats --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}"
+
+# Анализ использования места
+docker system df
+du -sh volumes/
+du -sh logs/
+
+# Очистка старых данных
+find logs/ -name "*.log" -mtime +7 -delete
+find volumes/ -name "*.log" -mtime +30 -delete
+```
+
+---
+
+## 📄 Лицензия
+
+MIT License. См. [LICENSE](LICENSE) для подробностей.
+
+## 🤝 Поддержка
+
+- 📖 [Документация](FINAL_README.md)
+- 🧪 [Гид по тестированию](TESTING_GUIDE_NEW.md)
+- 📝 [История изменений](CHANGELOG.md)
+- 🐛 [Issues](https://github.com/pnizer/wweb-mcp/issues)
+
+---
+
+**Сделано с ❤️ для сообщества разработчиков** 

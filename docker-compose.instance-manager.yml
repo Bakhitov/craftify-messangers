@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  instance-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.instance-manager
+    container_name: wweb-mcp-instance-manager-1
+    privileged: true
+    network_mode: host
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "4"
+    volumes:
+      # Универсальный Docker socket (работает для macOS Colima и Linux)
+      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
+      - ./logs:/app/logs
+      - ./volumes:/app/volumes
+      # Development volumes (только в dev)
+      - ./dist:/app/dist
+      - ./src:/app/src
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
+      - DATABASE_SCHEMA=${DATABASE_SCHEMA:-public}
+      # Database connection - Supabase
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_SSL=${DATABASE_SSL:-true}
+      - USE_SUPABASE=${USE_SUPABASE:-true}
+      # Docker настройки - внутри контейнера всегда /var/run/docker.sock
+      - DOCKER_SOCKET_PATH=/var/run/docker.sock
+      # Instance Manager настройки
+      - BASE_PORT_RANGE_START=${BASE_PORT_RANGE_START:-3001}
+      - BASE_PORT_RANGE_END=${BASE_PORT_RANGE_END:-7999}
+      - INSTANCE_MANAGER_PORT=${INSTANCE_MANAGER_PORT:-3000}
+      # Agno Agent System configuration
+      - AGNO_API_BASE_URL=${AGNO_API_BASE_URL:-http://host.docker.internal:8000}
+      - AGNO_API_TIMEOUT=${AGNO_API_TIMEOUT:-10000}
+      - AGNO_ENABLED=${AGNO_ENABLED:-false}
+    command: >
+      sh -c "chmod 666 /var/run/docker.sock 2>/dev/null || true && 
+             node dist/main-instance-manager.js"
+    restart: unless-stopped 

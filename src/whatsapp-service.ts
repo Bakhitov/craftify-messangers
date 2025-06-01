@@ -13,33 +13,65 @@ import {
   MediaResponse,
   SendMediaMessageParams,
   SendMediaMessageResponse,
+  ExtendedClient,
+  WhatsAppStatusResponse,
 } from './types';
 import logger from './logger';
 import path from 'path';
 import fs from 'fs';
 import mime from 'mime-types';
+import { ApiError } from './errors/api-error';
+import { MessageStorageService } from './services/message-storage.service';
 
 export function timestampToIso(timestamp: number): string {
   return new Date(timestamp * 1000).toISOString();
 }
 
 export class WhatsAppService {
-  private client: Client;
+  private client: Client & ExtendedClient;
+  private messageStorageService?: MessageStorageService;
+  private instanceId?: string;
 
-  constructor(client: Client) {
-    this.client = client;
+  constructor(client: Client, messageStorageService?: MessageStorageService, instanceId?: string) {
+    this.client = client as Client & ExtendedClient;
+    this.messageStorageService = messageStorageService;
+    this.instanceId = instanceId;
   }
 
   async getStatus(): Promise<StatusResponse> {
+    logger.info('getStatus method called');
     try {
       const status = this.client.info ? 'connected' : 'disconnected';
 
-      return {
+      const response: WhatsAppStatusResponse = {
+        provider: 'whatsapp',
         status,
         info: this.client.info,
       };
+
+      // Получаем QR код напрямую из клиента
+      const qrCode = this.client.currentQrCode;
+
+      // Отладочная информация
+      logger.info('Status check', {
+        hasClientInfo: !!this.client.info,
+        hasQrCode: !!qrCode,
+      });
+
+      // Добавляем QR код если он доступен
+      if (qrCode && !this.client.info) {
+        response.qr = qrCode;
+        response.state = 'QR_READY';
+        logger.info('QR code added to response');
+      } else if (this.client.info) {
+        response.state = 'READY';
+      } else {
+        response.state = 'DISCONNECTED';
+      }
+
+      return response;
     } catch (error) {
-      throw new Error(
+      throw ApiError.internal(
         `Failed to get client status: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -48,7 +80,7 @@ export class WhatsAppService {
   async getContacts(): Promise<ContactResponse[]> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       const contacts = await this.client.getContacts();
@@ -62,7 +94,10 @@ export class WhatsAppService {
         number: contact.number,
       }));
     } catch (error) {
-      throw new Error(
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw ApiError.internal(
         `Failed to fetch contacts: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -71,7 +106,7 @@ export class WhatsAppService {
   async searchContacts(query: string): Promise<ContactResponse[]> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       const contacts = await this.client.getContacts();
@@ -90,7 +125,10 @@ export class WhatsAppService {
         number: contact.number,
       }));
     } catch (error) {
-      throw new Error(
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw ApiError.internal(
         `Failed to search contacts: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -99,7 +137,7 @@ export class WhatsAppService {
   async getChats(): Promise<ChatResponse[]> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       const chats = await this.client.getChats();
@@ -116,7 +154,10 @@ export class WhatsAppService {
         };
       });
     } catch (error) {
-      throw new Error(
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw ApiError.internal(
         `Failed to fetch chats: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -125,12 +166,12 @@ export class WhatsAppService {
   async getMessages(number: string, limit: number = 10): Promise<MessageResponse[]> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       // Ensure number is a string
       if (typeof number !== 'string' || number.trim() === '') {
-        throw new Error('Invalid phone number');
+        throw ApiError.badRequest('Invalid phone number');
       }
 
       // Format the chat ID
@@ -149,7 +190,10 @@ export class WhatsAppService {
         type: message.type,
       }));
     } catch (error) {
-      throw new Error(
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw ApiError.internal(
         `Failed to fetch messages: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -158,12 +202,12 @@ export class WhatsAppService {
   async sendMessage(number: string, message: string): Promise<SendMessageResponse> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       // Ensure number is a string
       if (typeof number !== 'string' || number.trim() === '') {
-        throw new Error('Invalid phone number');
+        throw ApiError.badRequest('Invalid phone number');
       }
 
       // Format the chat ID
@@ -172,11 +216,43 @@ export class WhatsAppService {
       // Send the message
       const result = await this.client.sendMessage(chatId, message);
 
+      logger.debug('Outgoing message sent', {
+        to: number,
+        messageLength: message.length,
+        messageId: result.id.id,
+      });
+
+      // Сохраняем исходящее сообщение в базу данных
+      if (this.messageStorageService && this.instanceId) {
+        try {
+          await this.messageStorageService.saveMessage({
+            instance_id: this.instanceId,
+            message_id: result.id._serialized,
+            chat_id: chatId,
+            from_number: this.client.info?.wid?.user,
+            to_number: number,
+            message_body: message,
+            message_type: 'text',
+            is_group: false,
+            contact_name: undefined,
+            timestamp: Date.now(),
+          });
+        } catch (error) {
+          logger.error('Failed to save outgoing message to database', {
+            error: error instanceof Error ? error.message : String(error),
+            messageId: result.id._serialized,
+          });
+        }
+      }
+
       return {
         messageId: result.id.id,
       };
     } catch (error) {
-      throw new Error(
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw ApiError.internal(
         `Failed to send message: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -185,11 +261,11 @@ export class WhatsAppService {
   async createGroup(name: string, participants: string[]): Promise<CreateGroupResponse> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       if (typeof name !== 'string' || name.trim() === '') {
-        throw new Error('Invalid group name');
+        throw ApiError.badRequest('Invalid group name');
       }
 
       const formattedParticipants = participants.map(p => (p.includes('@c.us') ? p : `${p}@c.us`));
@@ -214,7 +290,7 @@ export class WhatsAppService {
         inviteCode,
       };
     } catch (error) {
-      throw new Error(
+      throw ApiError.internal(
         `Failed to create group: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -226,11 +302,11 @@ export class WhatsAppService {
   ): Promise<AddParticipantsResponse> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       if (typeof groupId !== 'string' || groupId.trim() === '') {
-        throw new Error('Invalid group ID');
+        throw ApiError.badRequest('Invalid group ID');
       }
 
       const formattedParticipants = participants.map(p => (p.includes('@c.us') ? p : `${p}@c.us`));
@@ -270,7 +346,7 @@ export class WhatsAppService {
         failed: failed.length > 0 ? failed : undefined,
       };
     } catch (error) {
-      throw new Error(
+      throw ApiError.internal(
         `Failed to add participants to group: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -279,12 +355,12 @@ export class WhatsAppService {
   async getGroupMessages(groupId: string, limit: number = 10): Promise<MessageResponse[]> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       // Ensure groupId is valid
       if (typeof groupId !== 'string' || groupId.trim() === '') {
-        throw new Error('Invalid group ID');
+        throw ApiError.badRequest('Invalid group ID');
       }
 
       // Format the group ID
@@ -303,7 +379,7 @@ export class WhatsAppService {
         type: message.type,
       }));
     } catch (error) {
-      throw new Error(
+      throw ApiError.internal(
         `Failed to fetch group messages: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -312,12 +388,12 @@ export class WhatsAppService {
   async sendGroupMessage(groupId: string, message: string): Promise<SendMessageResponse> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       // Ensure groupId is valid
       if (typeof groupId !== 'string' || groupId.trim() === '') {
-        throw new Error('Invalid group ID');
+        throw ApiError.badRequest('Invalid group ID');
       }
 
       // Format the group ID
@@ -326,11 +402,37 @@ export class WhatsAppService {
       // Send the message
       const result = await this.client.sendMessage(formattedGroupId, message);
 
+      logger.debug(`Outgoing group message to ${groupId}: ${message}`);
+
+      // Сохраняем исходящее групповое сообщение в базу данных
+      if (this.messageStorageService && this.instanceId) {
+        try {
+          await this.messageStorageService.saveMessage({
+            instance_id: this.instanceId,
+            message_id: result.id._serialized,
+            chat_id: formattedGroupId,
+            from_number: this.client.info?.wid?.user,
+            to_number: undefined,
+            message_body: message,
+            message_type: 'text',
+            is_group: true,
+            group_id: formattedGroupId,
+            contact_name: undefined,
+            timestamp: Date.now(),
+          });
+        } catch (error) {
+          logger.error('Failed to save outgoing group message to database', {
+            error: error instanceof Error ? error.message : String(error),
+            messageId: result.id._serialized,
+          });
+        }
+      }
+
       return {
         messageId: result.id.id,
       };
     } catch (error) {
-      throw new Error(
+      throw ApiError.internal(
         `Failed to send group message: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -344,7 +446,7 @@ export class WhatsAppService {
   async getGroups(): Promise<GroupResponse[]> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       // Get all chats
@@ -382,7 +484,7 @@ export class WhatsAppService {
 
       return groups;
     } catch (error) {
-      throw new Error(
+      throw ApiError.internal(
         `Failed to fetch groups: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -391,12 +493,12 @@ export class WhatsAppService {
   async getGroupById(groupId: string): Promise<GroupResponse> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       // Ensure groupId is valid
       if (typeof groupId !== 'string' || groupId.trim() === '') {
-        throw new Error('Invalid group ID');
+        throw ApiError.badRequest('Invalid group ID');
       }
 
       // It's not possible to use getChatById because WhatsApp Client is not setting the isGroup property
@@ -417,7 +519,7 @@ export class WhatsAppService {
         createdAt: chat.timestamp ? timestampToIso(chat.timestamp) : new Date().toISOString(),
       };
     } catch (error) {
-      throw new Error(
+      throw ApiError.internal(
         `Failed to fetch groups: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -426,7 +528,7 @@ export class WhatsAppService {
   async searchGroups(query: string): Promise<GroupResponse[]> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       const allGroups = await this.getGroups();
@@ -444,7 +546,7 @@ export class WhatsAppService {
 
       return matchingGroups;
     } catch (error) {
-      throw new Error(
+      throw ApiError.internal(
         `Failed to search groups: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -475,7 +577,7 @@ export class WhatsAppService {
   ): Promise<MediaResponse> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       const message = await this.client.getMessageById(messageId);
@@ -515,7 +617,7 @@ export class WhatsAppService {
       };
     } catch (error) {
       logger.error('Failed to download media', { error });
-      throw new Error(
+      throw ApiError.internal(
         `Failed to download media: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -528,12 +630,12 @@ export class WhatsAppService {
   }: SendMediaMessageParams): Promise<SendMediaMessageResponse> {
     try {
       if (!this.client.info) {
-        throw new Error('WhatsApp client not ready. Please try again later.');
+        throw ApiError.serviceUnavailable('WhatsApp client not ready. Please try again later.');
       }
 
       // Validate number
       if (typeof number !== 'string' || number.trim() === '') {
-        throw new Error('Invalid phone number');
+        throw ApiError.badRequest('Invalid phone number');
       }
 
       // Format the chat ID
@@ -544,16 +646,18 @@ export class WhatsAppService {
       try {
         if (source.startsWith('http://') || source.startsWith('https://')) {
           // URL source
-          media = await MessageMedia.fromUrl(source);
+          media = await MessageMedia.fromUrl(source, { unsafeMime: true });
         } else if (source.startsWith('file://')) {
           // Local file source (remove file:// prefix)
           const filePath = source.replace(/^file:\/\//, '');
           media = await MessageMedia.fromFilePath(filePath);
         } else {
-          throw new Error('Invalid source format. URLs must use http:// or https:// prefixes (e.g., https://example.com/image.jpg), local files must use file:// prefix (e.g., file:///path/to/image.jpg)');
+          throw new Error(
+            'Invalid source format. URLs must use http:// or https:// prefixes (e.g., https://example.com/image.jpg), local files must use file:// prefix (e.g., file:///path/to/image.jpg)',
+          );
         }
       } catch (error) {
-        throw new Error(
+        throw ApiError.internal(
           `Failed to load media from ${source}: ${
             error instanceof Error ? error.message : String(error)
           }`,
@@ -569,6 +673,10 @@ export class WhatsAppService {
       const messageOptions = caption ? { caption } : undefined;
       const result = await this.client.sendMessage(chatId, media, messageOptions);
 
+      logger.debug(
+        `Outgoing media message to ${number}: [${media.mimetype}]${caption ? ` with caption: ${caption}` : ''}`,
+      );
+
       return {
         messageId: result.id.id,
         mediaInfo: {
@@ -578,7 +686,7 @@ export class WhatsAppService {
         },
       };
     } catch (error) {
-      throw new Error(
+      throw ApiError.internal(
         `Failed to send media message: ${error instanceof Error ? error.message : String(error)}`,
       );
     }

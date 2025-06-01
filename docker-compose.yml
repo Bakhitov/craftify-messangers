@@ -1,0 +1,107 @@
+services:
+  whatsapp-api:
+    image: wweb-mcp:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "4"
+    ports:
+      - "${BASE_PORT_RANGE_START:-3001}-${BASE_PORT_RANGE_END:-7999}:${BASE_PORT_RANGE_START:-3001}"
+    volumes:
+      - wweb-auth:/wwebjs_auth
+      - ./webhook.json:/project/webhook.json:ro
+    command: ["-m", "whatsapp-api", "-s", "local", "-a", "/wwebjs_auth", "--log-level", "debug"]
+    stdin_open: true
+    tty: true
+    environment:
+      - DOCKER_CONTAINER=true
+      - BASE_PORT_RANGE_START=${BASE_PORT_RANGE_START:-3001}
+      - BASE_PORT_RANGE_END=${BASE_PORT_RANGE_END:-7999}
+      - AGNO_API_BASE_URL=${AGNO_API_BASE_URL:-http://host.docker.internal:8000}
+      - AGNO_API_TIMEOUT=${AGNO_API_TIMEOUT:-10000}
+      - AGNO_ENABLED=${AGNO_ENABLED:-false}
+      # Database configuration
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_SCHEMA=${DATABASE_SCHEMA:-public}
+      - DATABASE_SSL=${DATABASE_SSL:-true}
+      - USE_SUPABASE=${USE_SUPABASE:-true}
+
+  telegram-api:
+    image: wweb-mcp:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "4"
+    ports:
+      - "${TELEGRAM_BASE_PORT_RANGE_START:-4001}-${TELEGRAM_BASE_PORT_RANGE_END:-8999}:${TELEGRAM_BASE_PORT_RANGE_START:-4001}"
+    volumes:
+      - telegram-auth:/telegram_auth
+    command: ["-m", "telegram-api", "-s", "local", "-a", "/telegram_auth", "--telegram-bot-token", "${TELEGRAM_BOT_TOKEN}", "--log-level", "debug"]
+    stdin_open: true
+    tty: true
+    environment:
+      - DOCKER_CONTAINER=true
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - BASE_PORT_RANGE_START=${TELEGRAM_BASE_PORT_RANGE_START:-4001}
+      - BASE_PORT_RANGE_END=${TELEGRAM_BASE_PORT_RANGE_END:-8999}
+      - AGNO_API_BASE_URL=${AGNO_API_BASE_URL:-http://host.docker.internal:8000}
+      - AGNO_API_TIMEOUT=${AGNO_API_TIMEOUT:-10000}
+      - AGNO_ENABLED=${AGNO_ENABLED:-false}
+      # Database configuration
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_SCHEMA=${DATABASE_SCHEMA:-public}
+      - DATABASE_SSL=${DATABASE_SSL:-true}
+      - USE_SUPABASE=${USE_SUPABASE:-true}
+
+  mcp-server:
+    image: wweb-mcp:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "4"
+    depends_on:
+      - whatsapp-api
+    command: [
+      "-m", "mcp",
+      "-s", "local", 
+      "-c", "api",
+      "-t", "sse",
+      "--api-base-url", "http://whatsapp-api:${WHATSAPP_API_PORT:-3001}/api",
+      "--api-key", "${WHATSAPP_API_KEY}",
+      "--log-level", "debug"
+    ]
+    ports:
+      - "${BASE_PORT_RANGE_START:-3001}-${BASE_PORT_RANGE_END:-7999}:${MCP_PORT:-3002}"
+    environment:
+      - DOCKER_CONTAINER=true
+      - BASE_PORT_RANGE_START=${BASE_PORT_RANGE_START:-3001}
+      - BASE_PORT_RANGE_END=${BASE_PORT_RANGE_END:-7999}
+      - WHATSAPP_API_PORT=${WHATSAPP_API_PORT:-3001}
+      - MCP_PORT=${MCP_PORT:-3002}
+      # Database configuration
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_SCHEMA=${DATABASE_SCHEMA:-public}
+      - DATABASE_SSL=${DATABASE_SSL:-true}
+      - USE_SUPABASE=${USE_SUPABASE:-true}
+
+volumes:
+  wweb-auth: 
+  telegram-auth: 

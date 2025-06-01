@@ -1,0 +1,70 @@
+FROM node:22-bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Установка необходимых зависимостей для работы с Docker
+RUN apt-get update && \
+    apt-get install -y wget gnupg curl ca-certificates lsb-release && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Установка Docker CLI
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bookworm stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    apt-get update && \
+    apt-get install -y docker-ce-cli && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Создание группы docker и добавление пользователя root
+RUN groupadd -g 999 docker || true && \
+    usermod -aG docker root
+
+# Установка Docker Compose
+RUN curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && \
+    chmod +x /usr/local/bin/docker-compose
+
+WORKDIR /app
+
+# Копируем все файлы проекта
+COPY . .
+
+# Проверка наличия исходных файлов
+RUN ls -la && \
+    echo "Checking src directory:" && \
+    ls -la src && \
+    echo "Finding TypeScript files:" && \
+    find . -type f -name "*.ts" | head -5
+
+# Установка зависимостей
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+RUN npm ci --include=dev
+
+# Сборка проекта
+RUN npm run build
+
+# Проверяем, что сборка прошла успешно
+RUN ls -la dist || echo "dist directory not found!"
+
+# Удаление dev-зависимостей для уменьшения размера образа
+# Отключаем postinstall скрипт, чтобы избежать повторной сборки
+RUN npm config set ignore-scripts true && \
+    npm ci --omit=dev && \
+    npm cache clean --force && \
+    npm config set ignore-scripts false
+
+# Создание необходимых директорий
+RUN mkdir -p logs volumes
+
+# Переменные окружения
+ENV NODE_ENV=production
+ENV DOCKER_CONTAINER=true
+
+EXPOSE 3000
+
+# Healthcheck для Instance Manager
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Точка входа для Instance Manager
+ENTRYPOINT ["node", "dist/main-instance-manager.js"] 

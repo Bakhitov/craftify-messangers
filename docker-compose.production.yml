@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # Удаляем локальную PostgreSQL, так как используем Supabase
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: wweb-postgres
+  #   restart: always
+  #   environment:
+  #     POSTGRES_DB: ai
+  #     POSTGRES_USER: ai
+  #     POSTGRES_PASSWORD: SUPER_SECURE_PASSWORD_CHANGE_ME_2025
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   networks:
+  #     - wweb-network
+
+  instance-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.instance-manager
+    container_name: wweb-instance-manager
+    restart: always
+    env_file:
+      - env.production
+    environment:
+      # Supabase Database Configuration
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_HOST: ${DATABASE_HOST}
+      DATABASE_PORT: ${DATABASE_PORT}
+      DATABASE_NAME: ${DATABASE_NAME}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      DATABASE_SSL: ${DATABASE_SSL:-true}
+      USE_SUPABASE: ${USE_SUPABASE:-true}
+      
+      # Instance Manager
+      INSTANCE_MANAGER_PORT: ${INSTANCE_MANAGER_PORT:-3000}
+      INSTANCE_MANAGER_BASE_URL: ${INSTANCE_MANAGER_BASE_URL}
+      
+      # Docker Configuration
+      DOCKER_HOST: ${DOCKER_HOST}
+      INSTANCE_NETWORK: ${INSTANCE_NETWORK}
+      INSTANCE_VOLUMES_PATH: ${INSTANCE_VOLUMES_PATH}
+      INSTANCE_COMPOSE_PATH: ${INSTANCE_COMPOSE_PATH}
+      
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./composes:/app/composes
+      - ./volumes:/app/volumes
+      - instance_logs:/app/logs
+    networks:
+      - wweb-network
+    # Убираем зависимость от postgres
+    # depends_on:
+    #   - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    image: nginx:alpine
+    container_name: wweb-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/ssl:ro
+    depends_on:
+      - instance-manager
+    networks:
+      - wweb-network
+
+volumes:
+  # Убираем postgres_data, так как используем Supabase
+  # postgres_data:
+  #   driver: local
+  instance_logs:
+    driver: local
+
+networks:
+  wweb-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

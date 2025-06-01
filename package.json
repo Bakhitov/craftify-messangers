@@ -7,19 +7,37 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:watch": "tsc --watch",
     "start": "node dist/main.js",
-    "dev": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/main.ts",
+    "start:instance-manager": "node dist/main-instance-manager.js",
+    "dev": "npm run build && node dist/main.js",
+    "dev:watch": "./dev-watch.sh",
+    "dev:instance-manager": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/main-instance-manager.ts",
     "watch": "tsc -w",
     "serve": "nodemon --watch dist/ dist/main.js",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "lint": "eslint . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "validate": "npm run lint && npm run test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "validate": "npm run lint",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run validate"
+    "prepublishOnly": "npm run validate",
+    "setup": "chmod +x install.sh && ./install.sh",
+    "postinstall": "npm run build",
+    "test:db": "npm run build && node dist/utils/test-db-connection.js",
+    "test:db:dev": "ts-node src/utils/test-db-connection.ts",
+    "docker:build": "docker build -t wweb-mcp:latest .",
+    "docker:build-instance-manager": "docker build -f Dockerfile.instance-manager -t wweb-mcp-instance-manager:latest .",
+    "docker:run": "docker run -p 3000:3000 wweb-mcp:latest",
+    "docker:up": "docker-compose -f docker-compose.instance-manager.yml up -d --build",
+    "docker:down": "docker-compose -f docker-compose.instance-manager.yml down",
+    "docker:logs": "docker logs wweb-mcp-instance-manager-1 -f",
+    "docker:dev": "docker-compose -f docker-compose.instance-manager.yml up -d",
+    "docker:restart": "docker-compose -f docker-compose.instance-manager.yml restart",
+    "docker:rebuild": "docker-compose -f docker-compose.instance-manager.yml up -d --build",
+    "clean": "rm -rf dist node_modules",
+    "clean:auth": "rm -rf .wwebjs_auth",
+    "clean:logs": "rm -rf logs",
+    "clean:all": "npm run clean && npm run clean:auth && npm run clean:logs"
   },
   "author": "Philippe Nizer",
   "license": "MIT",
@@ -27,20 +45,30 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",
     "axios": "^1.8.3",
+    "dockerode": "^4.0.2",
+    "dotenv": "^16.5.0",
     "express": "^5.0.1",
+    "grammy": "^1.36.3",
     "mime-types": "^2.1.35",
+    "pg": "^8.13.1",
     "qrcode-terminal": "^0.12.0",
+    "systeminformation": "^5.23.15",
+    "uuid": "^11.0.5",
     "whatsapp-web.js": "^1.26.0",
     "winston": "^3.17.0",
+    "yaml": "^2.7.0",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
-    "@types/express": "^5.0.0",
+    "@types/dockerode": "^3.3.39",
+    "@types/express": "^5.0.2",
     "@types/jest": "^29.5.14",
     "@types/mime-types": "^2.1.4",
     "@types/node": "^20.17.28",
+    "@types/pg": "^8.15.2",
     "@types/qrcode-terminal": "^0.12.2",
-    "@types/supertest": "^6.0.2",
+    "@types/supertest": "^6.0.3",
+    "@types/uuid": "^10.0.0",
     "@types/yargs": "^17.0.33",
     "@typescript-eslint/eslint-plugin": "^8.26.1",
     "@typescript-eslint/parser": "^8.26.1",
@@ -55,7 +83,7 @@
     "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2",
-    "typescript-eslint": "^8.26.1"
+    "typescript-eslint": "^8.33.0"
   },
   "repository": {
     "type": "git",
@@ -68,5 +96,14 @@
     "agent",
     "ai",
     "claude"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
   ]
 }
