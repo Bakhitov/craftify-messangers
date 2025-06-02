@@ -19,14 +19,7 @@ export class DockerComposeGenerator {
       volumes: {},
       networks: {
         'wweb-network': {
-          driver: 'bridge',
-          ipam: {
-            config: [
-              {
-                subnet: '172.20.0.0/16'
-              }
-            ]
-          }
+          external: true  // Используем внешнюю сеть, которая должна быть создана заранее
         },
       },
     };
@@ -74,6 +67,7 @@ export class DockerComposeGenerator {
         ports: [`${instance.port_api}:${instance.port_api}`],
         volumes: instance.provider === 'telegram' ? [] : [`${authVolumeName}:/wwebjs_auth`],
         command,
+        networks: ['wweb-network'],  // Подключаем к общей сети
         logging: {
           driver: 'json-file',
           options: {
@@ -177,6 +171,7 @@ export class DockerComposeGenerator {
         image: 'wweb-mcp:latest',
         container_name: NamingUtils.getMcpContainerName(instance.id),
         ports: [`${instance.port_mcp}:${instance.port_mcp}`],
+        networks: ['wweb-network'],  // Подключаем к общей сети
         command: [
           '-m',
           'mcp',
