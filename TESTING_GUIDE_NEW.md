@@ -106,7 +106,7 @@ curl http://localhost:3000/health
 #### Создание WhatsApp экземпляра
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/instances \
+curl -X POST http://13.61.141.6:3000/api/v1/instances \
 -H "Content-Type: application/json" \
 -d '{
   "user_id": "test-whatsapp-user-001", 
@@ -128,7 +128,7 @@ curl -X POST http://localhost:3000/api/v1/instances \
 #### Создание Telegram экземпляра
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/instances \
+curl -X POST http://13.61.141.6:3000/api/v1/instances \
 -H "Content-Type: application/json" \
 -d '{
     "user_id": "test-telegram-user-001",

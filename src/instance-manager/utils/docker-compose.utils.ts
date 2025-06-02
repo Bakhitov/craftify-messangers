@@ -18,9 +18,15 @@ export class DockerComposeGenerator {
       services: {},
       volumes: {},
       networks: {
-        default: {
-          name: 'wweb-mcp_wweb-network',
-          external: true,
+        'wweb-network': {
+          driver: 'bridge',
+          ipam: {
+            config: [
+              {
+                subnet: '172.20.0.0/16'
+              }
+            ]
+          }
         },
       },
     };

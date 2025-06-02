@@ -32,10 +32,45 @@ export class DockerService {
   async checkConnection(): Promise<boolean> {
     try {
       await this.docker.ping();
+      // Проверяем и создаем сеть при подключении
+      await this.ensureNetworkExists();
       return true;
     } catch (error) {
       logger.error('Docker connection failed', error);
       return false;
+    }
+  }
+
+  async ensureNetworkExists(): Promise<void> {
+    const networkName = 'wweb-network';
+    
+    try {
+      // Проверяем существование сети
+      const networks = await this.docker.listNetworks({
+        filters: { name: [networkName] }
+      });
+
+      if (networks.length === 0) {
+        logger.info(`Creating Docker network: ${networkName}`);
+        await this.docker.createNetwork({
+          Name: networkName,
+          Driver: 'bridge',
+          IPAM: {
+            Driver: 'default',
+            Config: [
+              {
+                Subnet: '172.20.0.0/16'
+              }
+            ]
+          }
+        });
+        logger.info(`Docker network ${networkName} created successfully`);
+      } else {
+        logger.debug(`Docker network ${networkName} already exists`);
+      }
+    } catch (error) {
+      logger.error(`Failed to ensure network ${networkName} exists`, error);
+      // Не бросаем ошибку, так как сеть может быть создана другим способом
     }
   }
 
