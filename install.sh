@@ -24,6 +24,35 @@ error() {
     exit 1
 }
 
+# Функция для определения внешнего IP-адреса
+get_external_ip() {
+    local ip=""
+    
+    # Пробуем несколько сервисов для получения внешнего IP
+    for service in "ifconfig.me" "ipecho.net/plain" "icanhazip.com" "ident.me"; do
+        ip=$(curl -s --connect-timeout 5 --max-time 10 "http://$service" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$')
+        if [[ -n "$ip" ]]; then
+            echo "$ip"
+            return 0
+        fi
+    done
+    
+    # Если не удалось получить внешний IP, используем localhost
+    echo "localhost"
+    return 1
+}
+
+# Определяем внешний IP-адрес
+log "Определение внешнего IP-адреса..."
+EXTERNAL_IP=$(get_external_ip)
+
+if [[ "$EXTERNAL_IP" == "localhost" ]]; then
+    warn "Не удалось определить внешний IP-адрес. Будет использован localhost."
+    warn "Для работы с внешними клиентами отредактируйте .env файл вручную."
+else
+    log "✅ Внешний IP-адрес: $EXTERNAL_IP"
+fi
+
 # Проверка системных требований
 log "Проверка системных требований..."
 
@@ -104,7 +133,7 @@ USE_SUPABASE=true
 
 # Instance Manager
 INSTANCE_MANAGER_PORT=3000
-INSTANCE_MANAGER_BASE_URL=http://localhost:3000
+INSTANCE_MANAGER_BASE_URL=http://$EXTERNAL_IP:3000
 
 # Docker настройки
 DOCKER_SOCKET_PATH=/var/run/docker.sock
@@ -128,9 +157,15 @@ TELEGRAM_BOT_TOKEN=YOUR_BOT_TOKEN_HERE
 TELEGRAM_ENABLED=false
 
 # AI интеграция (Agno Agent System)
-AGNO_API_BASE_URL=http://host.docker.internal:8000
+AGNO_API_BASE_URL=https://2367-45-86-83-173.ngrok-free.app
 AGNO_API_TIMEOUT=10000
 AGNO_ENABLED=false
+
+# CORS настройки
+CORS_ORIGIN=http://$EXTERNAL_IP:3000
+
+# Внешний IP для CORS с любыми портами
+EXTERNAL_IP=$EXTERNAL_IP
 
 # Development специфичные настройки
 DOCKER_CONTAINER=true
@@ -231,13 +266,21 @@ echo "   - DATABASE_URL: строка подключения к Supabase"
 echo "   - DATABASE_PASSWORD: пароль от Supabase"
 echo "   - Замените YOUR_PROJECT на ID вашего проекта"
 echo ""
-echo "2. 🚀 Запустите development окружение:"
+echo "2. 🌐 Настроен внешний IP-адрес: $EXTERNAL_IP"
+if [[ "$EXTERNAL_IP" == "localhost" ]]; then
+    echo "   ⚠️  Внешний IP не определен - используется localhost"
+    echo "   💡 Для внешнего доступа отредактируйте INSTANCE_MANAGER_BASE_URL в .env"
+else
+    echo "   ✅ Instance Manager будет доступен по адресу: http://$EXTERNAL_IP:3000"
+fi
+echo ""
+echo "3. 🚀 Запустите development окружение:"
 echo "   ./start-dev.sh"
 if [[ "$OSTYPE" == "darwin"* ]] && [[ "$(docker context show 2>/dev/null)" == "colima" ]]; then
     echo "   💡 Выберите 'y' для запуска Instance Manager на хосте"
 fi
 echo ""
-echo "3. 📱 Для Telegram API добавьте TELEGRAM_BOT_TOKEN в .env"
+echo "4. 📱 Для Telegram API добавьте TELEGRAM_BOT_TOKEN в .env"
 echo ""
 echo -e "${BLUE}📚 Документация:${NC}"
 echo "  README.md                - Основная документация"
@@ -246,7 +289,7 @@ echo "  SUPABASE_MIGRATION_COMPLETED.md - Информация о миграци
 echo ""
 echo -e "${YELLOW}💡 Полезные ссылки:${NC}"
 echo "  Supabase Dashboard: https://supabase.com/dashboard"
-echo "  Instance Manager API: http://localhost:3000 (после запуска)"
+echo "  Instance Manager API: http://$EXTERNAL_IP:3000 (после запуска)"
 echo ""
 if [[ "$OSTYPE" == "darwin"* ]] && [[ "$(docker context show 2>/dev/null)" == "colima" ]]; then
     echo -e "${YELLOW}🍎 Специально для macOS + Colima:${NC}"

@@ -1574,3 +1574,18 @@ docker-compose -f docker-compose.supabase.yml up -d --build
 - `src/instance-manager/utils/docker-compose.utils.ts` - исправлено получение Telegram token
 - `src/instance-manager/services/instance-monitor.service.ts` - исправлено использование поля account
 - `TESTING_GUIDE_NEW.md` - обновлен пример создания Telegram экземпляра
+
+## [Unreleased] - 2025-01-15
+
+### Changed
+- **env.production**: Заменен реальный пароль `DATABASE_PASSWORD=Ginifi51!` на placeholder `DATABASE_PASSWORD=YOUR_PASSWORD` с комментарием-примером для безопасности
+- **start-prod.sh**: Добавлена проверка `DATABASE_PASSWORD` на placeholder значения для предотвращения запуска с незаполненными конфигурациями
+- **start-dev.sh**: Добавлена проверка `DATABASE_PASSWORD` на placeholder значения для предотвращения запуска с незаполненными конфигурациями
+
+### Security
+- Удален реальный пароль из файла конфигурации `env.production` для предотвращения случайного коммита секретных данных
+- Добавлены дополнительные проверки валидации конфигурации базы данных в скриптах запуска
+
+### Documentation
+- Добавлен комментарий с примером пароля в `env.production` для удобства пользователей
+- Улучшены сообщения об ошибках в скриптах запуска с указанием конкретных полей для замены

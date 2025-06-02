@@ -8,8 +8,38 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# Функция для определения внешнего IP-адреса
+get_external_ip() {
+    local ip=""
+    
+    # Пробуем несколько сервисов для получения внешнего IP
+    for service in "ifconfig.me" "ipecho.net/plain" "icanhazip.com" "ident.me"; do
+        ip=$(curl -s --connect-timeout 5 --max-time 10 "http://$service" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$')
+        if [[ -n "$ip" ]]; then
+            echo "$ip"
+            return 0
+        fi
+    done
+    
+    # Если не удалось получить внешний IP, используем localhost
+    echo "localhost"
+    return 1
+}
+
 echo -e "${BLUE}🚀 Запуск PRODUCTION окружения с Supabase Cloud${NC}"
 echo "================================================="
+
+# Определяем внешний IP-адрес
+echo -e "${YELLOW}🌐 Определение внешнего IP-адреса...${NC}"
+EXTERNAL_IP=$(get_external_ip)
+
+if [[ "$EXTERNAL_IP" == "localhost" ]]; then
+    echo -e "${YELLOW}⚠️ Не удалось определить внешний IP-адрес. Используется localhost.${NC}"
+    echo -e "${YELLOW}💡 Instance Manager будет доступен только локально${NC}"
+else
+    echo -e "${GREEN}✅ Внешний IP-адрес: $EXTERNAL_IP${NC}"
+    echo -e "${GREEN}💡 Instance Manager будет доступен по адресу: http://$EXTERNAL_IP:3000${NC}"
+fi
 
 # Проверка системы
 echo -e "${YELLOW}📋 Проверка системных требований...${NC}"
@@ -48,6 +78,34 @@ fi
 cp env.production .env
 echo -e "${GREEN}✅ Скопирована production конфигурация${NC}"
 
+# Динамически обновляем INSTANCE_MANAGER_BASE_URL с актуальным внешним IP
+if [[ "$EXTERNAL_IP" != "localhost" ]]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s|INSTANCE_MANAGER_BASE_URL=.*|INSTANCE_MANAGER_BASE_URL=http://$EXTERNAL_IP:3000|g" .env
+        sed -i '' "s|CORS_ORIGIN=.*|CORS_ORIGIN=http://$EXTERNAL_IP:3000|g" .env
+        # Добавляем или обновляем EXTERNAL_IP
+        if grep -q "EXTERNAL_IP=" .env; then
+            sed -i '' "s|EXTERNAL_IP=.*|EXTERNAL_IP=$EXTERNAL_IP|g" .env
+        else
+            echo "EXTERNAL_IP=$EXTERNAL_IP" >> .env
+        fi
+    else
+        sed -i "s|INSTANCE_MANAGER_BASE_URL=.*|INSTANCE_MANAGER_BASE_URL=http://$EXTERNAL_IP:3000|g" .env
+        sed -i "s|CORS_ORIGIN=.*|CORS_ORIGIN=http://$EXTERNAL_IP:3000|g" .env
+        # Добавляем или обновляем EXTERNAL_IP
+        if grep -q "EXTERNAL_IP=" .env; then
+            sed -i "s|EXTERNAL_IP=.*|EXTERNAL_IP=$EXTERNAL_IP|g" .env
+        else
+            echo "EXTERNAL_IP=$EXTERNAL_IP" >> .env
+        fi
+    fi
+    echo -e "${GREEN}✅ Обновлен INSTANCE_MANAGER_BASE_URL: http://$EXTERNAL_IP:3000${NC}"
+    echo -e "${GREEN}✅ Обновлен CORS_ORIGIN: http://$EXTERNAL_IP:3000${NC}"
+    echo -e "${GREEN}✅ Установлен EXTERNAL_IP: $EXTERNAL_IP (для CORS с любыми портами)${NC}"
+else
+    echo -e "${YELLOW}💡 INSTANCE_MANAGER_BASE_URL и CORS_ORIGIN остаются localhost (внешний IP недоступен)${NC}"
+fi
+
 # Валидация критических настроек
 echo -e "${YELLOW}🔒 Проверка security настроек...${NC}"
 
@@ -59,11 +117,12 @@ if [ "$USE_SUPABASE" = "true" ] && [ -n "$DATABASE_URL" ]; then
     echo -e "${BLUE}🌐 Используется Supabase Cloud Database${NC}"
     
     # Проверяем, что не используются placeholder значения
-    if [[ "$DATABASE_URL" == *"YOUR_PASSWORD"* ]] || [[ "$DATABASE_URL" == *"YOUR_PROJECT"* ]]; then
-        echo -e "${RED}❌ Обнаружены placeholder значения в DATABASE_URL!${NC}"
+    if [[ "$DATABASE_URL" == *"YOUR_PASSWORD"* ]] || [[ "$DATABASE_URL" == *"YOUR_PROJECT"* ]] || [[ "$DATABASE_PASSWORD" == "YOUR_PASSWORD" ]]; then
+        echo -e "${RED}❌ Обнаружены placeholder значения в конфигурации базы данных!${NC}"
         echo "Отредактируйте env.production и замените:"
         echo "  - YOUR_PASSWORD на ваш пароль от Supabase"
         echo "  - YOUR_PROJECT на ID вашего проекта Supabase"
+        echo "  - DATABASE_PASSWORD=YOUR_PASSWORD на реальный пароль"
         exit 1
     fi
     
@@ -125,6 +184,7 @@ fi
 # Остановка существующих сервисов
 echo -e "${YELLOW}🛑 Остановка существующих сервисов...${NC}"
 docker-compose -f docker-compose.instance-manager.yml down 2>/dev/null || true
+docker-compose -f docker-compose.instance-manager.production.yml down 2>/dev/null || true
 
 # Очистка старых образов
 echo -e "${YELLOW}🧹 Очистка старых Docker образов...${NC}"
@@ -172,7 +232,8 @@ if [ "$USE_HOST_MODE" = true ]; then
     
 else
     echo -e "${YELLOW}🚀 Запуск production Instance Manager в Docker...${NC}"
-    docker-compose -f docker-compose.instance-manager.yml up -d --build
+    echo -e "${BLUE}💡 Используется production docker-compose конфигурация с bridge network${NC}"
+    docker-compose -f docker-compose.instance-manager.production.yml up -d --build
     
     # Ожидание запуска всех сервисов
     echo -e "${YELLOW}⏳ Ожидание запуска сервисов...${NC}"
@@ -195,7 +256,11 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         RETRY_COUNT=$((RETRY_COUNT + 1))
         if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
             echo -e "${RED}❌ Недоступен${NC}"
-            echo "Проверьте логи: docker logs wweb-mcp-instance-manager-1 -f"
+            if [ "$USE_HOST_MODE" = true ]; then
+                echo "Проверьте логи: tail -f instance-manager-prod.log"
+            else
+                echo "Проверьте логи: docker logs wweb-mcp-instance-manager-prod -f"
+            fi
         else
             echo -n "."
             sleep 3
@@ -227,20 +292,38 @@ echo "================================================="
 echo -e "${BLUE}📋 Production информация:${NC}"
 echo ""
 echo -e "${GREEN}🌐 URLs:${NC}"
-echo "  Instance Manager API:  http://localhost:3000"
-echo "  Health Check:          http://localhost:3000/health"
-echo "  API Instances:         http://localhost:3000/api/v1/instances"
-echo "  Supabase Dashboard:    https://supabase.com/dashboard"
+echo "  Instance Manager API (локальный):  http://localhost:3000"
+if [[ "$EXTERNAL_IP" != "localhost" ]]; then
+    echo "  Instance Manager API (внешний):    http://$EXTERNAL_IP:3000"
+fi
+echo "  Health Check:                      http://localhost:3000/health"
+echo "  API Instances:                     http://localhost:3000/api/v1/instances"
+echo "  Supabase Dashboard:                https://supabase.com/dashboard"
 echo ""
+if [[ "$EXTERNAL_IP" != "localhost" ]]; then
+    echo -e "${GREEN}🌍 Внешний доступ:${NC}"
+    echo "  Instance Manager доступен извне по адресу: http://$EXTERNAL_IP:3000"
+    echo "  CORS настроен для поддержки любых портов на IP: $EXTERNAL_IP"
+    echo "  Разрешенные origins: http://$EXTERNAL_IP:*, https://$EXTERNAL_IP:*"
+    if [ "$USE_HOST_MODE" = true ]; then
+        echo "  Режим сети: Host network (прямой доступ к портам хоста)"
+    else
+        echo "  Режим сети: Bridge network (порт 3000 проброшен на 0.0.0.0:3000)"
+    fi
+    echo "  Убедитесь что порт 3000 открыт в файрволе"
+    echo "  Рекомендуется настроить SSL и reverse proxy для production"
+    echo ""
+fi
 echo -e "${GREEN}🔧 Команды мониторинга:${NC}"
-echo "  Статус контейнера:     docker ps | grep wweb-mcp-instance-manager"
 if [ "$USE_HOST_MODE" = true ]; then
+    echo "  Статус процесса:       ps aux | grep main-instance-manager.js"
     echo "  Логи Instance Manager: tail -f instance-manager-prod.log"
     echo "  Процесс Instance Manager: ps aux | grep main-instance-manager.js"
 else
-    echo "  Логи Instance Manager: docker logs wweb-mcp-instance-manager-1 -f"
+    echo "  Статус контейнера:     docker ps | grep wweb-mcp-instance-manager-prod"
+    echo "  Логи Instance Manager: docker logs wweb-mcp-instance-manager-prod -f"
+    echo "  Статистика ресурсов:   docker stats wweb-mcp-instance-manager-prod"
 fi
-echo "  Статистика ресурсов:   docker stats wweb-mcp-instance-manager-1"
 echo "  Проверка здоровья:     curl http://localhost:3000/health"
 echo ""
 echo -e "${GREEN}🛑 Команды управления:${NC}"
@@ -250,10 +333,10 @@ if [ "$USE_HOST_MODE" = true ]; then
     echo "  Просмотр логов:        tail -f instance-manager-prod.log"
     echo "  Статус процесса:       ps aux | grep main-instance-manager.js"
 else
-    echo "  Перезапуск:            docker-compose -f docker-compose.instance-manager.yml restart"
-    echo "  Остановка:             docker-compose -f docker-compose.instance-manager.yml down"
-    echo "  Обновление:            git pull && docker-compose -f docker-compose.instance-manager.yml up -d --build"
-    echo "  Просмотр логов:        docker-compose -f docker-compose.instance-manager.yml logs -f"
+    echo "  Перезапуск:            docker-compose -f docker-compose.instance-manager.production.yml restart"
+    echo "  Остановка:             docker-compose -f docker-compose.instance-manager.production.yml down"
+    echo "  Обновление:            git pull && docker-compose -f docker-compose.instance-manager.production.yml up -d --build"
+    echo "  Просмотр логов:        docker-compose -f docker-compose.instance-manager.production.yml logs -f"
 fi
 echo ""
 echo -e "${GREEN}📊 API команды:${NC}"

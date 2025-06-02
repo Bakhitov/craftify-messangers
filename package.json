@@ -44,7 +44,9 @@
   "description": "WhatsApp Web MCP Server",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",
+    "@types/cors": "^2.8.18",
     "axios": "^1.8.3",
+    "cors": "^2.8.5",
     "dockerode": "^4.0.2",
     "dotenv": "^16.5.0",
     "express": "^5.0.1",

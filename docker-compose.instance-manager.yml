@@ -7,6 +7,8 @@ services:
       dockerfile: Dockerfile.instance-manager
     container_name: wweb-mcp-instance-manager-1
     privileged: true
+    # Используем host network для максимальной совместимости с Docker socket
+    # и для доступа по внешнему IP без дополнительной настройки портов
     network_mode: host
     logging:
       driver: "json-file"
@@ -42,6 +44,10 @@ services:
       - BASE_PORT_RANGE_START=${BASE_PORT_RANGE_START:-3001}
       - BASE_PORT_RANGE_END=${BASE_PORT_RANGE_END:-7999}
       - INSTANCE_MANAGER_PORT=${INSTANCE_MANAGER_PORT:-3000}
+      - INSTANCE_MANAGER_BASE_URL=${INSTANCE_MANAGER_BASE_URL:-http://localhost:3000}
+      # CORS настройки
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+      - EXTERNAL_IP=${EXTERNAL_IP:-localhost}
       # Agno Agent System configuration
       - AGNO_API_BASE_URL=${AGNO_API_BASE_URL:-http://host.docker.internal:8000}
       - AGNO_API_TIMEOUT=${AGNO_API_TIMEOUT:-10000}

@@ -1,22 +1,6 @@
 version: '3.8'
 
 services:
-  # Удаляем локальную PostgreSQL, так как используем Supabase
-  # postgres:
-  #   image: postgres:15-alpine
-  #   container_name: wweb-postgres
-  #   restart: always
-  #   environment:
-  #     POSTGRES_DB: ai
-  #     POSTGRES_USER: ai
-  #     POSTGRES_PASSWORD: SUPER_SECURE_PASSWORD_CHANGE_ME_2025
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #   ports:
-  #     - "5432:5432"
-  #   networks:
-  #     - wweb-network
-
   instance-manager:
     build:
       context: .
@@ -41,11 +25,20 @@ services:
       INSTANCE_MANAGER_PORT: ${INSTANCE_MANAGER_PORT:-3000}
       INSTANCE_MANAGER_BASE_URL: ${INSTANCE_MANAGER_BASE_URL}
       
+      # CORS настройки
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      EXTERNAL_IP: ${EXTERNAL_IP:-localhost}
+      
       # Docker Configuration
       DOCKER_HOST: ${DOCKER_HOST}
       INSTANCE_NETWORK: ${INSTANCE_NETWORK}
       INSTANCE_VOLUMES_PATH: ${INSTANCE_VOLUMES_PATH}
       INSTANCE_COMPOSE_PATH: ${INSTANCE_COMPOSE_PATH}
+      
+      # Agno Agent System configuration
+      AGNO_API_BASE_URL: ${AGNO_API_BASE_URL}
+      AGNO_API_TIMEOUT: ${AGNO_API_TIMEOUT:-150000}
+      AGNO_ENABLED: ${AGNO_ENABLED:-true}
       
     ports:
       - "3000:3000"

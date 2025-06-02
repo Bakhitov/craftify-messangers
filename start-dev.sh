@@ -8,8 +8,38 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# Функция для определения внешнего IP-адреса
+get_external_ip() {
+    local ip=""
+    
+    # Пробуем несколько сервисов для получения внешнего IP
+    for service in "ifconfig.me" "ipecho.net/plain" "icanhazip.com" "ident.me"; do
+        ip=$(curl -s --connect-timeout 5 --max-time 10 "http://$service" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$')
+        if [[ -n "$ip" ]]; then
+            echo "$ip"
+            return 0
+        fi
+    done
+    
+    # Если не удалось получить внешний IP, используем localhost
+    echo "localhost"
+    return 1
+}
+
 echo -e "${BLUE}🚀 Запуск DEVELOPMENT окружения с Supabase Cloud${NC}"
 echo "================================================="
+
+# Определяем внешний IP-адрес
+echo -e "${YELLOW}🌐 Определение внешнего IP-адреса...${NC}"
+EXTERNAL_IP=$(get_external_ip)
+
+if [[ "$EXTERNAL_IP" == "localhost" ]]; then
+    echo -e "${YELLOW}⚠️ Не удалось определить внешний IP-адрес. Используется localhost.${NC}"
+    echo -e "${YELLOW}💡 Instance Manager будет доступен только локально${NC}"
+else
+    echo -e "${GREEN}✅ Внешний IP-адрес: $EXTERNAL_IP${NC}"
+    echo -e "${GREEN}💡 Instance Manager будет доступен по адресу: http://$EXTERNAL_IP:3000${NC}"
+fi
 
 # Проверка системы
 echo -e "${YELLOW}📋 Проверка системных требований...${NC}"
@@ -56,6 +86,34 @@ fi
 cp env.development .env
 echo -e "${GREEN}✅ Скопирована development конфигурация${NC}"
 
+# Динамически обновляем INSTANCE_MANAGER_BASE_URL с актуальным внешним IP
+if [[ "$EXTERNAL_IP" != "localhost" ]]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s|INSTANCE_MANAGER_BASE_URL=.*|INSTANCE_MANAGER_BASE_URL=http://$EXTERNAL_IP:3000|g" .env
+        sed -i '' "s|CORS_ORIGIN=.*|CORS_ORIGIN=http://$EXTERNAL_IP:3000|g" .env
+        # Добавляем или обновляем EXTERNAL_IP
+        if grep -q "EXTERNAL_IP=" .env; then
+            sed -i '' "s|EXTERNAL_IP=.*|EXTERNAL_IP=$EXTERNAL_IP|g" .env
+        else
+            echo "EXTERNAL_IP=$EXTERNAL_IP" >> .env
+        fi
+    else
+        sed -i "s|INSTANCE_MANAGER_BASE_URL=.*|INSTANCE_MANAGER_BASE_URL=http://$EXTERNAL_IP:3000|g" .env
+        sed -i "s|CORS_ORIGIN=.*|CORS_ORIGIN=http://$EXTERNAL_IP:3000|g" .env
+        # Добавляем или обновляем EXTERNAL_IP
+        if grep -q "EXTERNAL_IP=" .env; then
+            sed -i "s|EXTERNAL_IP=.*|EXTERNAL_IP=$EXTERNAL_IP|g" .env
+        else
+            echo "EXTERNAL_IP=$EXTERNAL_IP" >> .env
+        fi
+    fi
+    echo -e "${GREEN}✅ Обновлен INSTANCE_MANAGER_BASE_URL: http://$EXTERNAL_IP:3000${NC}"
+    echo -e "${GREEN}✅ Обновлен CORS_ORIGIN: http://$EXTERNAL_IP:3000${NC}"
+    echo -e "${GREEN}✅ Установлен EXTERNAL_IP: $EXTERNAL_IP (для CORS с любыми портами)${NC}"
+else
+    echo -e "${YELLOW}💡 INSTANCE_MANAGER_BASE_URL и CORS_ORIGIN остаются localhost (внешний IP недоступен)${NC}"
+fi
+
 # Обновляем путь к Docker socket для текущего пользователя (macOS)
 COLIMA_SOCKET_MISSING=false
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -97,11 +155,12 @@ if [ "$USE_SUPABASE" = "true" ] && [ -n "$DATABASE_URL" ]; then
     echo -e "${BLUE}🌐 Используется Supabase Cloud Database${NC}"
     
     # Проверяем, что не используются placeholder значения
-    if [[ "$DATABASE_URL" == *"YOUR_PASSWORD"* ]] || [[ "$DATABASE_URL" == *"YOUR_PROJECT"* ]]; then
-        echo -e "${RED}❌ Обнаружены placeholder значения в DATABASE_URL!${NC}"
-        echo "Отредактируйте env.development и замените:"
+    if [[ "$DATABASE_URL" == *"YOUR_PASSWORD"* ]] || [[ "$DATABASE_URL" == *"YOUR_PROJECT"* ]] || [[ "$DATABASE_PASSWORD" == "YOUR_PASSWORD" ]]; then
+        echo -e "${RED}❌ Обнаружены placeholder значения в конфигурации базы данных!${NC}"
+        echo "Отредактируйте .env и замените:"
         echo "  - YOUR_PASSWORD на ваш пароль от Supabase"
         echo "  - YOUR_PROJECT на ID вашего проекта Supabase"
+        echo "  - DATABASE_PASSWORD=YOUR_PASSWORD на реальный пароль"
         echo ""
         echo "Пример правильной строки подключения:"
         echo "DATABASE_URL=postgresql://postgres:your_real_password@db.abcdefghijklmnop.supabase.co:5432/postgres"
@@ -228,11 +287,22 @@ echo "================================================="
 echo -e "${BLUE}📋 Информация о сервисах:${NC}"
 echo ""
 echo -e "${GREEN}🌐 URLs:${NC}"
-echo "  Instance Manager:  http://localhost:3000"
-echo "  Health Check:      http://localhost:3000/health"
-echo "  API Instances:     http://localhost:3000/api/v1/instances"
-echo "  Supabase Dashboard: https://supabase.com/dashboard"
+echo "  Instance Manager (локальный):  http://localhost:3000"
+if [[ "$EXTERNAL_IP" != "localhost" ]]; then
+    echo "  Instance Manager (внешний):    http://$EXTERNAL_IP:3000"
+fi
+echo "  Health Check:                  http://localhost:3000/health"
+echo "  API Instances:                 http://localhost:3000/api/v1/instances"
+echo "  Supabase Dashboard:            https://supabase.com/dashboard"
 echo ""
+if [[ "$EXTERNAL_IP" != "localhost" ]]; then
+    echo -e "${GREEN}🌍 Внешний доступ:${NC}"
+    echo "  Instance Manager доступен извне по адресу: http://$EXTERNAL_IP:3000"
+    echo "  CORS настроен для поддержки любых портов на IP: $EXTERNAL_IP"
+    echo "  Разрешенные origins: http://$EXTERNAL_IP:*, https://$EXTERNAL_IP:*"
+    echo "  Убедитесь что порт 3000 открыт в файрволе"
+    echo ""
+fi
 echo -e "${GREEN}🔧 Команды для разработки:${NC}"
 if [ "$USE_HOST_MODE" = true ]; then
     echo "  Логи Instance Manager: tail -f instance-manager.log"

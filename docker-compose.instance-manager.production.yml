@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  instance-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.instance-manager
+    container_name: wweb-mcp-instance-manager-prod
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "4"
+    ports:
+      # Привязываем к всем интерфейсам для внешнего доступа
+      - "0.0.0.0:3000:3000"
+    volumes:
+      # Docker socket для управления контейнерами
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./logs:/app/logs
+      - ./volumes:/app/volumes
+      - ./composes:/app/composes
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DATABASE_SCHEMA=${DATABASE_SCHEMA:-public}
+      # Database connection - Supabase
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_SSL=${DATABASE_SSL:-true}
+      - USE_SUPABASE=${USE_SUPABASE:-true}
+      # Docker настройки
+      - DOCKER_SOCKET_PATH=/var/run/docker.sock
+      # Instance Manager настройки
+      - BASE_PORT_RANGE_START=${BASE_PORT_RANGE_START:-3001}
+      - BASE_PORT_RANGE_END=${BASE_PORT_RANGE_END:-7999}
+      - INSTANCE_MANAGER_PORT=${INSTANCE_MANAGER_PORT:-3000}
+      - INSTANCE_MANAGER_BASE_URL=${INSTANCE_MANAGER_BASE_URL}
+      # CORS настройки
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - EXTERNAL_IP=${EXTERNAL_IP:-localhost}
+      # Agno Agent System configuration
+      - AGNO_API_BASE_URL=${AGNO_API_BASE_URL}
+      - AGNO_API_TIMEOUT=${AGNO_API_TIMEOUT:-150000}
+      - AGNO_ENABLED=${AGNO_ENABLED:-true}
+      # Telegram настройки
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-true}
+      - TELEGRAM_BASE_PORT_RANGE_START=${TELEGRAM_BASE_PORT_RANGE_START:-4001}
+      - TELEGRAM_BASE_PORT_RANGE_END=${TELEGRAM_BASE_PORT_RANGE_END:-8999}
+      # Пути
+      - COMPOSE_FILES_PATH=${COMPOSE_FILES_PATH:-/app/composes}
+      - VOLUMES_PATH=${VOLUMES_PATH:-/app/volumes}
+    networks:
+      - wweb-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  wweb-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 
