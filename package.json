@@ -10,7 +10,7 @@
     "build:watch": "tsc --watch",
     "start": "node dist/main.js",
     "start:instance-manager": "node dist/main-instance-manager.js",
-    "dev": "npm run build && node dist/main.js",
+    "dev": "pnpm run build && node dist/main.js",
     "dev:watch": "./dev-watch.sh",
     "dev:instance-manager": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/main-instance-manager.ts",
     "watch": "tsc -w",
@@ -18,12 +18,12 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.ts\"",
-    "validate": "npm run lint",
-    "prepare": "npm run build",
-    "prepublishOnly": "npm run validate",
+    "validate": "pnpm run lint",
+    "prepare": "pnpm run build",
+    "prepublishOnly": "pnpm run validate",
     "setup": "chmod +x install.sh && ./install.sh",
-    "postinstall": "npm run build",
-    "test:db": "npm run build && node dist/utils/test-db-connection.js",
+    "postinstall": "pnpm run build",
+    "test:db": "pnpm run build && node dist/utils/test-db-connection.js",
     "test:db:dev": "ts-node src/utils/test-db-connection.ts",
     "docker:build": "docker build -t wweb-mcp:latest .",
     "docker:build-instance-manager": "docker build -f Dockerfile.instance-manager -t wweb-mcp-instance-manager:latest .",
@@ -37,14 +37,13 @@
     "clean": "rm -rf dist node_modules",
     "clean:auth": "rm -rf .wwebjs_auth",
     "clean:logs": "rm -rf logs",
-    "clean:all": "npm run clean && npm run clean:auth && npm run clean:logs"
+    "clean:all": "pnpm run clean && pnpm run clean:auth && pnpm run clean:logs"
   },
   "author": "Philippe Nizer",
   "license": "MIT",
   "description": "WhatsApp Web MCP Server",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",
-    "@types/cors": "^2.8.18",
     "axios": "^1.8.3",
     "cors": "^2.8.5",
     "dockerode": "^4.0.2",
@@ -59,9 +58,11 @@
     "whatsapp-web.js": "^1.26.0",
     "winston": "^3.17.0",
     "yaml": "^2.7.0",
-    "yargs": "^17.7.2"
+    "yargs": "^17.7.2",
+    "zod": "^3.25.47"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.18",
     "@types/dockerode": "^3.3.39",
     "@types/express": "^5.0.2",
     "@types/jest": "^29.5.14",
@@ -85,7 +86,8 @@
     "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2",
-    "typescript-eslint": "^8.33.0"
+    "typescript-eslint": "^8.33.0",
+    "zod": "^3.25.47"
   },
   "repository": {
     "type": "git",

@@ -55,14 +55,9 @@ else
 fi
 
 # Сборка проекта (если есть build скрипт)
-if grep -q '"build"' package.json; then
-    echo "🔨 Сборка проекта..."
-    if command -v pnpm &> /dev/null; then
-        pnpm run build
-    else
-        npm run build
-    fi
-fi
+echo "🔨 Сборка проекта..."
+echo "Building project..."
+pnpm run build
 
 # Запуск обновленных сервисов
 echo "🚀 Запуск обновленных сервисов..."
@@ -106,4 +101,6 @@ echo "   Health: curl http://localhost:3000/health"
 echo ""
 echo "💡 В случае проблем можно откатиться:"
 echo "   git checkout $CURRENT_COMMIT"
-echo "   docker-compose up -d --build" 
+echo "   docker-compose up -d --build"
+
+echo "✅ Production update completed successfully!" 

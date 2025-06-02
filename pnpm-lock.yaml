@@ -11,9 +11,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.7.0
         version: 1.12.1
-      '@types/cors':
-        specifier: ^2.8.18
-        version: 2.8.18
       axios:
         specifier: ^1.8.3
         version: 1.9.0
@@ -59,7 +56,13 @@ importers:
       yargs:
         specifier: ^17.7.2
         version: 17.7.2
+      zod:
+        specifier: ^3.25.47
+        version: 3.25.47
     devDependencies:
+      '@types/cors':
+        specifier: ^2.8.18
+        version: 2.8.18
       '@types/dockerode':
         specifier: ^3.3.39
         version: 3.3.39
@@ -2826,8 +2829,8 @@ packages:
     peerDependencies:
       zod: ^3.24.1
 
-  zod@3.25.46:
-    resolution: {integrity: sha512-IqRxcHEIjqLd4LNS/zKffB3Jzg3NwqJxQQ0Ns7pdrvgGkwQsEBdEQcOHaBVqvvZArShRzI39+aMST3FBGmTrLQ==}
+  zod@3.25.47:
+    resolution: {integrity: sha512-+f8+agSYoT9niC0VUL60IuXnr81FJeJ27Lf5YPrmcxTWmygcpGBeEuAAovDDEjkyQ36KyqNswwbhISZ1Z7yY+A==}
 
 snapshots:
 
@@ -3315,8 +3318,8 @@ snapshots:
       express-rate-limit: 7.5.0(express@5.1.0)
       pkce-challenge: 5.0.0
       raw-body: 3.0.0
-      zod: 3.25.46
-      zod-to-json-schema: 3.24.5(zod@3.25.46)
+      zod: 3.25.47
+      zod-to-json-schema: 3.24.5(zod@3.25.47)
     transitivePeerDependencies:
       - supports-color
 
@@ -6006,8 +6009,8 @@ snapshots:
       readable-stream: 3.6.2
     optional: true
 
-  zod-to-json-schema@3.24.5(zod@3.25.46):
+  zod-to-json-schema@3.24.5(zod@3.25.47):
     dependencies:
-      zod: 3.25.46
+      zod: 3.25.47
 
-  zod@3.25.46: {}
+  zod@3.25.47: {}

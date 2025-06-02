@@ -27,11 +27,18 @@ COPY tsconfig.json ./
 # Copy source code first
 COPY src/ ./src/
 
-# Install all dependencies (including devDependencies needed for build)
-RUN npm ci --include=dev
+# Install pnpm globally
+RUN npm install -g pnpm
 
-# Build the project
-RUN npm run build
+# Install dependencies
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN pnpm run build
 
 # Remove devDependencies to reduce image size, but skip postinstall scripts
 RUN npm ci --only=production --ignore-scripts && npm cache clean --force

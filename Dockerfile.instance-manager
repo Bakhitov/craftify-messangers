@@ -24,33 +24,39 @@ RUN groupadd -g 999 docker || true && \
 RUN curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && \
     chmod +x /usr/local/bin/docker-compose
 
+# Установка pnpm глобально
+RUN npm install -g pnpm
+
 WORKDIR /app
 
-# Копируем все файлы проекта
+# Сначала копируем все файлы (включая tsconfig.json)
 COPY . .
 
-# Проверка наличия исходных файлов
+# Установка зависимостей (включая dev для сборки)
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+RUN pnpm install --frozen-lockfile
+
+# Проверка наличия исходных файлов и конфигурации
 RUN ls -la && \
     echo "Checking src directory:" && \
     ls -la src && \
+    echo "Checking tsconfig.json:" && \
+    test -f tsconfig.json && echo "tsconfig.json exists" || echo "tsconfig.json missing" && \
+    echo "Checking package.json scripts:" && \
+    grep -A 5 '"scripts"' package.json && \
     echo "Finding TypeScript files:" && \
     find . -type f -name "*.ts" | head -5
 
-# Установка зависимостей
-ENV PUPPETEER_SKIP_DOWNLOAD=true
-RUN npm ci --include=dev
-
-# Сборка проекта
-RUN npm run build
+# Сборка проекта (если postinstall не сработал)
+RUN test -d dist || pnpm run build
 
 # Проверяем, что сборка прошла успешно
 RUN ls -la dist || echo "dist directory not found!"
 
 # Удаление dev-зависимостей для уменьшения размера образа
-# Отключаем postinstall скрипт, чтобы избежать повторной сборки
+# Отключаем scripts чтобы postinstall не запускался после prune
 RUN npm config set ignore-scripts true && \
-    npm ci --omit=dev && \
-    npm cache clean --force && \
+    pnpm prune --prod && \
     npm config set ignore-scripts false
 
 # Создание необходимых директорий
