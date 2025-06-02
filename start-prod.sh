@@ -215,16 +215,17 @@ docker system prune -f
 
 # Создание или проверка Docker сети для инстансов
 echo -e "${YELLOW}🌐 Создание Docker сети для инстансов...${NC}"
-if ! docker network ls | grep -q "wweb-network"; then
-    echo -e "${BLUE}🔧 Создание сети wweb-network...${NC}"
-    docker network create \
-        --driver bridge \
-        --subnet=172.20.0.0/16 \
-        wweb-network
-    echo -e "${GREEN}✅ Сеть wweb-network создана${NC}"
-else
-    echo -e "${GREEN}✅ Сеть wweb-network уже существует${NC}"
+if docker network ls | grep -q "wweb-network"; then
+    echo -e "${BLUE}🔧 Пересоздание сети wweb-network для обеспечения правильной конфигурации...${NC}"
+    docker network rm wweb-network 2>/dev/null || true
 fi
+
+echo -e "${BLUE}🔧 Создание сети wweb-network...${NC}"
+docker network create \
+    --driver bridge \
+    --subnet=172.20.0.0/16 \
+    wweb-network
+echo -e "${GREEN}✅ Сеть wweb-network создана с правильной конфигурацией${NC}"
 
 # Определение режима запуска Instance Manager для production
 DOCKER_CONTEXT=$(docker context show)
