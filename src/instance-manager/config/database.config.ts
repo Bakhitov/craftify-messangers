@@ -35,13 +35,11 @@ export function createPool(): Pool {
       ssl: config.ssl ? { rejectUnauthorized: false } : false,
     };
 
-    // Настройки пула для Supabase
+    // Настройки пула для Supabase (убираем statement_timeout и query_timeout - они не поддерживаются)
     if (process.env.USE_SUPABASE === 'true') {
       poolConfig.max = 20; // Максимальное количество подключений
       poolConfig.idleTimeoutMillis = 30000; // 30 секунд
       poolConfig.connectionTimeoutMillis = 10000; // 10 секунд
-      poolConfig.statement_timeout = 30000; // 30 секунд для запросов
-      poolConfig.query_timeout = 30000; // 30 секунд для запросов
     }
 
     return new Pool(poolConfig);
@@ -57,13 +55,11 @@ export function createPool(): Pool {
     ssl: config.ssl ? { rejectUnauthorized: false } : false,
   };
 
-  // Настройки пула для Supabase
+  // Настройки пула для Supabase (убираем statement_timeout и query_timeout - они не поддерживаются)
   if (process.env.USE_SUPABASE === 'true') {
     poolConfig.max = 20;
     poolConfig.idleTimeoutMillis = 30000;
     poolConfig.connectionTimeoutMillis = 10000;
-    poolConfig.statement_timeout = 30000;
-    poolConfig.query_timeout = 30000;
   }
 
   return new Pool(poolConfig);

@@ -40,8 +40,14 @@ COPY . .
 # Build the application
 RUN pnpm run build
 
-# Remove devDependencies to reduce image size, but skip postinstall scripts
-RUN npm ci --only=production --ignore-scripts && npm cache clean --force
+# Проверяем, что сборка прошла успешно
+RUN ls -la dist && \
+    test -f dist/main.js && echo "Main build successful" || (echo "Main build failed" && exit 1)
+
+# Remove devDependencies to reduce image size AFTER build
+RUN npm config set ignore-scripts true && \
+    pnpm prune --prod && \
+    npm config set ignore-scripts false
 
 # Create directories for auth and logs
 RUN mkdir -p .wwebjs_auth logs

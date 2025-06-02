@@ -47,14 +47,15 @@ RUN ls -la && \
     echo "Finding TypeScript files:" && \
     find . -type f -name "*.ts" | head -5
 
-# Сборка проекта (если postinstall не сработал)
-RUN test -d dist || pnpm run build
+# Сборка проекта
+RUN pnpm run build
 
 # Проверяем, что сборка прошла успешно
-RUN ls -la dist || echo "dist directory not found!"
+RUN ls -la dist && \
+    test -f dist/main-instance-manager.js && echo "Instance Manager build successful" || (echo "Instance Manager build failed" && exit 1)
 
 # Удаление dev-зависимостей для уменьшения размера образа
-# Отключаем scripts чтобы postinstall не запускался после prune
+# Важно: удаляем dev-зависимости ПОСЛЕ сборки
 RUN npm config set ignore-scripts true && \
     pnpm prune --prod && \
     npm config set ignore-scripts false
