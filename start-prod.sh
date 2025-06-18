@@ -29,6 +29,45 @@ get_external_ip() {
 echo -e "${BLUE}🚀 Запуск PRODUCTION окружения с Supabase Cloud${NC}"
 echo "================================================="
 
+# Обновление кода с GitHub
+echo -e "${YELLOW}📥 Обновление кода с GitHub...${NC}"
+
+# Проверяем, что мы в git репозитории
+if [ -d ".git" ]; then
+    # Сохраняем локальные изменения если есть
+    if ! git diff-index --quiet HEAD --; then
+        echo -e "${YELLOW}💾 Обнаружены локальные изменения. Сохранение в stash...${NC}"
+        git stash push -m "auto-backup before production deploy $(date)"
+        STASHED_CHANGES=true
+    else
+        STASHED_CHANGES=false
+    fi
+    
+    # Обновляем код
+    echo -e "${YELLOW}🔄 Получение последних изменений...${NC}"
+    if git pull origin main; then
+        echo -e "${GREEN}✅ Код успешно обновлен${NC}"
+        
+        # Показываем последний коммит
+        echo -e "${BLUE}📋 Последний коммит:${NC}"
+        git log --oneline -1
+        
+        # Восстанавливаем локальные изменения если были
+        if [ "$STASHED_CHANGES" = true ]; then
+            echo -e "${YELLOW}♻️ Восстановление локальных изменений...${NC}"
+            if git stash pop; then
+                echo -e "${GREEN}✅ Локальные изменения восстановлены${NC}"
+            else
+                echo -e "${YELLOW}⚠️ Конфликт при восстановлении изменений. Проверьте git stash list${NC}"
+            fi
+        fi
+    else
+        echo -e "${RED}❌ Ошибка при обновлении кода. Продолжение с текущей версией...${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠️ Не git репозиторий. Пропуск обновления кода.${NC}"
+fi
+
 # Определяем внешний IP-адрес
 echo -e "${YELLOW}🌐 Определение внешнего IP-адреса...${NC}"
 EXTERNAL_IP=$(get_external_ip)
@@ -372,7 +411,7 @@ if [ "$USE_HOST_MODE" = true ]; then
 else
     echo "  Перезапуск:            docker-compose -f docker-compose.instance-manager.production.yml restart"
     echo "  Остановка:             docker-compose -f docker-compose.instance-manager.production.yml down"
-    echo "  Обновление:            git pull && docker-compose -f docker-compose.instance-manager.production.yml up -d --build"
+    echo "  Обновление:            ./start-prod.sh (автоматически обновляет код с Git)"
     echo "  Просмотр логов:        docker-compose -f docker-compose.instance-manager.production.yml logs -f"
 fi
 echo ""
