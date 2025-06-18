@@ -19,7 +19,7 @@ export class DockerComposeGenerator {
       volumes: {},
       networks: {
         'wweb-network': {
-          external: true  // Используем внешнюю сеть, которая должна быть создана заранее
+          external: true, // Используем внешнюю сеть, которая должна быть создана заранее
         },
       },
     };
@@ -67,7 +67,7 @@ export class DockerComposeGenerator {
         ports: [`${instance.port_api}:${instance.port_api}`],
         volumes: instance.provider === 'telegram' ? [] : [`${authVolumeName}:/wwebjs_auth`],
         command,
-        networks: ['wweb-network'],  // Подключаем к общей сети
+        networks: ['wweb-network'], // Подключаем к общей сети
         logging: {
           driver: 'json-file',
           options: {
@@ -90,7 +90,7 @@ export class DockerComposeGenerator {
           DB_NAME: process.env.DATABASE_NAME || process.env.DB_NAME || 'postgres',
           DB_USER: process.env.DATABASE_USER || process.env.DB_USER || 'postgres',
           DB_PASSWORD: process.env.DATABASE_PASSWORD || process.env.DB_PASSWORD || 'password',
-          DB_SCHEMA: process.env.DATABASE_SCHEMA || process.env.DB_SCHEMA || 'public',
+          DB_SCHEMA: process.env.DATABASE_SCHEMA || process.env.DB_SCHEMA || 'ai',
           // Добавляем переменные для агентной системы (Agno)
           AGNO_API_BASE_URL: process.env.AGNO_API_BASE_URL || 'http://host.docker.internal:8000',
           AGNO_API_TIMEOUT: process.env.AGNO_API_TIMEOUT || '10000',
@@ -171,7 +171,7 @@ export class DockerComposeGenerator {
         image: 'wweb-mcp:latest',
         container_name: NamingUtils.getMcpContainerName(instance.id),
         ports: [`${instance.port_mcp}:${instance.port_mcp}`],
-        networks: ['wweb-network'],  // Подключаем к общей сети
+        networks: ['wweb-network'], // Подключаем к общей сети
         command: [
           '-m',
           'mcp',

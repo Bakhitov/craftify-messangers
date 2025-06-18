@@ -9,7 +9,14 @@ export interface WebhookMessageData {
   from?: string;
   body: string;
   timestamp: number;
-  provider: 'whatsapp' | 'telegram';
+  provider:
+    | 'whatsapp'
+    | 'telegram'
+    | 'whatsapp-official'
+    | 'facebook-messenger'
+    | 'instagram'
+    | 'slack'
+    | 'discord';
   messageType: string;
   isGroup: boolean;
   contactName?: string;

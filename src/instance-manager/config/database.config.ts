@@ -18,7 +18,7 @@ export function getDatabaseConfig(): DatabaseConfig {
     database: process.env.DATABASE_NAME || process.env.DB_NAME || 'postgres',
     user: process.env.DATABASE_USER || process.env.DB_USER || 'postgres',
     password: process.env.DATABASE_PASSWORD || process.env.DB_PASSWORD || 'password',
-    schema: process.env.DATABASE_SCHEMA || process.env.DB_SCHEMA || 'public',
+    schema: process.env.DATABASE_SCHEMA || process.env.DB_SCHEMA || 'ai',
     ssl: process.env.DATABASE_SSL === 'true' || process.env.DB_SSL === 'true',
     connectionString: process.env.DATABASE_URL,
   };
@@ -65,14 +65,14 @@ export function createPool(): Pool {
   return new Pool(poolConfig);
 }
 
-// SQL для создания схемы (не нужно для public)
+// SQL для создания схемы (не нужно для ai)
 export const CREATE_SCHEMA_SQL = `
-  -- Схема public уже существует в PostgreSQL/Supabase
+  -- Схема ai уже существует в PostgreSQL/Supabase
   -- Ничего не нужно создавать
 `;
 
 export const CREATE_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS public.message_instances (
+  CREATE TABLE IF NOT EXISTS ai.message_instances (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id VARCHAR(255),
     provider VARCHAR NOT NULL DEFAULT 'whatsappweb',
@@ -96,8 +96,8 @@ export const CREATE_TABLE_SQL = `
     token TEXT
   );
 
-  CREATE INDEX IF NOT EXISTS idx_message_instances_user_id ON public.message_instances(user_id);
-  CREATE INDEX IF NOT EXISTS idx_message_instances_provider ON public.message_instances(provider);
-  CREATE INDEX IF NOT EXISTS idx_message_instances_agent_id ON public.message_instances(agent_id);
-  CREATE INDEX IF NOT EXISTS idx_message_instances_auth_status ON public.message_instances(auth_status);
+  CREATE INDEX IF NOT EXISTS idx_message_instances_user_id ON ai.message_instances(user_id);
+  CREATE INDEX IF NOT EXISTS idx_message_instances_provider ON ai.message_instances(provider);
+  CREATE INDEX IF NOT EXISTS idx_message_instances_agent_id ON ai.message_instances(agent_id);
+  CREATE INDEX IF NOT EXISTS idx_message_instances_auth_status ON ai.message_instances(auth_status);
 `;

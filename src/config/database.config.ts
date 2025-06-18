@@ -19,7 +19,7 @@ export function getDatabaseConfig(): DatabaseConfig {
     database: process.env.DATABASE_NAME || process.env.DB_NAME || 'postgres',
     user: process.env.DATABASE_USER || process.env.DB_USER || 'postgres',
     password: process.env.DATABASE_PASSWORD || process.env.DB_PASSWORD || 'password',
-    schema: process.env.DATABASE_SCHEMA || 'public',
+    schema: process.env.DATABASE_SCHEMA || 'ai',
     ssl: process.env.DATABASE_SSL === 'true' || process.env.DB_SSL === 'true',
     connectionString: process.env.DATABASE_URL,
   };
@@ -66,9 +66,9 @@ export function createPool(): Pool {
   return new Pool(poolConfig);
 }
 
-// SQL для создания таблицы messages в схеме public
+// SQL для создания таблицы messages в схеме ai
 export const CREATE_MESSAGES_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS public.messages (
+  CREATE TABLE IF NOT EXISTS ai.messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     instance_id UUID NOT NULL,
     message_id VARCHAR(255) NOT NULL,
@@ -88,9 +88,9 @@ export const CREATE_MESSAGES_TABLE_SQL = `
     UNIQUE(instance_id, message_id)
   );
 
-  CREATE INDEX IF NOT EXISTS idx_messages_instance_id ON public.messages(instance_id);
-  CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON public.messages(chat_id);
-  CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON public.messages(timestamp);
-  CREATE INDEX IF NOT EXISTS idx_messages_from_number ON public.messages(from_number);
-  CREATE INDEX IF NOT EXISTS idx_messages_is_group ON public.messages(is_group);
+  CREATE INDEX IF NOT EXISTS idx_messages_instance_id ON ai.messages(instance_id);
+  CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON ai.messages(chat_id);
+  CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON ai.messages(timestamp);
+  CREATE INDEX IF NOT EXISTS idx_messages_from_number ON ai.messages(from_number);
+  CREATE INDEX IF NOT EXISTS idx_messages_is_group ON ai.messages(is_group);
 `;

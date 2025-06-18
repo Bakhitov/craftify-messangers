@@ -1,69 +1,128 @@
-# 🧪 TESTING GUIDE - Supabase Cloud Edition
+# 🧪 TESTING GUIDE - Multi-Provider Edition v2.0
 
-Руководство по тестированию проекта wweb-mcp с использованием Supabase Cloud базы данных.
+Руководство по тестированию проекта wweb-mcp с поддержкой множественных провайдеров мессенджеров и Supabase Cloud базы данных.
 
-## 🏗️ Архитектура Supabase Cloud
+## 🏗️ Архитектура Multi-Provider System
+
+### Поддерживаемые провайдеры
+- **WhatsApp Web** - через whatsapp-web.js (основной)
+- **Telegram** - через Bot API
+- **WhatsApp Official** - через Facebook Graph API
+- **Facebook Messenger** - через Facebook Graph API
+- **Instagram** - через Instagram Basic Display API
+- **Slack** - через Slack Web API
+- **Discord** - через Discord.js
 
 ### Конфигурация базы данных
 - **Provider**: Supabase Cloud
-- **Host**: `aws-0-eu-north-1.pooler.supabase.com`
-- **Port**: `6543` (Transaction mode)
+- **Host**: `db.wyehpfzafbjfvyjzgjss.supabase.co`
+- **Port**: `5432` (Direct), `6543` (Transaction mode)
 - **Database**: `postgres`
-- **Schema**: `public`
+- **Schema**: `ai` (основная), `public` (legacy)
 - **SSL**: Обязательно включен
 
 ### Настройка окружения
 
-#### 1. Конфигурация для Supabase
+#### 1. Конфигурация для разработки
 ```bash
-# Копирование конфигурации Supabase
-cp env.supabase .env
+# Копирование development конфигурации
+cp env.development .env
 
 # Проверка конфигурации
 cat .env | grep DATABASE
 ```
 
-#### 2. Запуск с Supabase
+#### 2. Конфигурация для production
 ```bash
-# Остановка локальных сервисов (если запущены)
-docker-compose down
+# Копирование production конфигурации
+cp env.production .env
 
-# Запуск с Supabase конфигурацией
-docker-compose -f docker-compose.supabase.yml up -d --build
-
-# Проверка статуса
-docker-compose -f docker-compose.supabase.yml ps
+# Редактирование под ваши настройки
+nano .env
 ```
 
-#### 3. Проверка подключения к Supabase
+#### 3. Запуск Instance Manager (основной сервис)
+```bash
+# Development режим
+docker-compose -f docker-compose.instance-manager.yml up -d --build
+
+# Production режим
+docker-compose -f docker-compose.instance-manager.production.yml up -d --build
+
+# Проверка статуса
+docker-compose -f docker-compose.instance-manager.yml ps
+
+# Проверить что порт 3000 освободился
+lsof -i :3000
+
+# Проверить что контейнеры остановлены
+docker ps | grep instance-manager
+
+# Проверить что Instance Manager недоступен
+curl http://localhost:3000/health
+
+```
+
+
+tail -f instance-manager.log
+
+
+# Остановить все связанные контейнеры
+docker-compose -f docker-compose.instance-manager.yml down
+
+# Удалить образы (опционально)
+docker rmi wweb-mcp-instance-manager:latest
+
+# Очистить volumes (осторожно - удалит данные!)
+docker volume prune
+
+# Очистить сеть
+docker network prune
+
+lsof -i :3000
+kill -9 <PID>
+pkill -f "main-instance-manager"
+
+
+#### 4. Проверка подключения к Supabase
 ```bash
 # Проверка логов подключения
 docker logs wweb-mcp-instance-manager-1 -f
 
 # Тест подключения к базе
-docker exec wweb-mcp-instance-manager-1 psql \
-  "postgresql://postgres.wyehpfzafbjfvyjzgjss:Ginifi51!@aws-0-eu-north-1.pooler.supabase.com:6543/postgres" \
-  -c "\dt public.*"
+docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "SELECT 1;"
 ```
 
-### Проверка таблиц в схеме public
+### Проверка таблиц в схеме ai
 ```bash
-# Проверка существования таблиц
+# Проверка существования таблиц в схеме ai
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
 SELECT table_name, table_schema 
 FROM information_schema.tables 
-WHERE table_schema = 'public' 
-AND table_name IN ('message_instances', 'messages');
+WHERE table_schema = 'ai' 
+AND table_name LIKE '%instances%';
 "
 
-# Проверка структуры таблицы message_instances
+# Проверка структуры таблиц провайдеров
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
-\d public.message_instances
+\d ai.whatsappweb_instances
+"
+
+# Проверка структуры таблицы telegram_instances
+docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
+\d ai.telegram_instances
 "
 
 # Проверка структуры таблицы messages
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
-\d public.messages
+\d ai.messages
+"
+
+# Проверка VIEW all_instances
+docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
+SELECT provider, COUNT(*) as count 
+FROM ai.all_instances 
+GROUP BY provider;
 "
 ```
 
@@ -103,20 +162,20 @@ curl http://localhost:3000/health
 }
 ```
 
-#### Создание WhatsApp экземпляра
+#### Создание WhatsApp Web экземпляра
 
 ```bash
-curl -X POST http://13.61.141.6:3000/api/v1/instances \
+curl -X POST http://localhost:3000/api/v1/instances \
 -H "Content-Type: application/json" \
 -d '{
   "user_id": "test-whatsapp-user-001", 
-  "agent_id": "agno_assist2", 
+  "agent_id": "671088", 
   "agno_enable": true, 
   "provider": "whatsappweb", 
   "type_instance": ["api"], 
   "api_webhook_schema": {
     "enabled": true, 
-    "url": "https://gk85vc.buildship.run/webhook-message-api", 
+    "url": "https://workflows-api.jetadmin.io/hooks/gvUIflaSb70RevttxcJSgwypdMJjO5Yu", 
     "filters": {
       "allowGroups": false, 
       "allowPrivate": true
@@ -128,11 +187,11 @@ curl -X POST http://13.61.141.6:3000/api/v1/instances \
 #### Создание Telegram экземпляра
 
 ```bash
-curl -X POST http://13.61.141.6:3000/api/v1/instances \
+curl -X POST http://localhost:3000/api/v1/instances \
 -H "Content-Type: application/json" \
 -d '{
     "user_id": "test-telegram-user-001",
-    "agent_id": "finance_agent1",
+    "agent_id": "240222",
     "provider": "telegram",
     "agno_enable": true,
     "stream": false,
@@ -140,7 +199,49 @@ curl -X POST http://13.61.141.6:3000/api/v1/instances \
     "token": "7961413009:AAGEp-pakPC5OmvgTyXBLmNGoSlLdCAzg28",
     "api_webhook_schema": {
         "enabled": true, 
-        "url": "https://gk85vc.buildship.run/webhook-message-api"
+        "url": "https://workflows-api.jetadmin.io/hooks/gvUIflaSb70RevttxcJSgwypdMJjO5Yu"
+    }
+}'
+```
+
+#### Создание WhatsApp Official экземпляра
+
+```bash
+curl -X POST http://localhost:3000/api/v1/instances \
+-H "Content-Type: application/json" \
+-d '{
+    "user_id": "test-whatsapp-official-001",
+    "agent_id": "business_agent1",
+    "provider": "whatsapp-official",
+    "agno_enable": true,
+    "type_instance": ["api"],
+    "phone_number_id": "YOUR_PHONE_NUMBER_ID",
+    "access_token": "YOUR_ACCESS_TOKEN",
+    "webhook_verify_token": "YOUR_VERIFY_TOKEN",
+    "api_webhook_schema": {
+        "enabled": true, 
+        "url": "https://your-webhook-url.com/webhook-message-api"
+    }
+}'
+```
+
+#### Создание Discord экземпляра
+
+```bash
+curl -X POST http://localhost:3000/api/v1/instances \
+-H "Content-Type: application/json" \
+-d '{
+    "user_id": "test-discord-user-001",
+    "agent_id": "community_agent1",
+    "provider": "discord",
+    "agno_enable": true,
+    "type_instance": ["api"],
+    "bot_token": "YOUR_BOT_TOKEN",
+    "client_id": "YOUR_CLIENT_ID",
+    "guild_id": "YOUR_GUILD_ID",
+    "api_webhook_schema": {
+        "enabled": true, 
+        "url": "https://your-webhook-url.com/webhook-message-api"
     }
 }'
 ```
@@ -277,29 +378,61 @@ curl -X DELETE http://localhost:3000/api/v1/instances/$INSTANCE_ID
 echo "✅ Тест завершен успешно"
 ```
 
-## 📱 Тестирование WhatsApp API
+## 📱 Тестирование Multi-Provider API
 
-### Запуск standalone WhatsApp API
+### Тестирование мультипровайдерного сервиса
 
 ```bash
-# Прямой запуск (без Instance Manager)
+# Запуск через Instance Manager (рекомендуется)
+docker-compose -f docker-compose.instance-manager.yml up -d --build
+
+# Проверка доступности Multi-Provider API
+curl http://localhost:3000/api/v1/multi-provider/active-providers
+
+# Просмотр логов
+docker logs wweb-mcp-instance-manager-1 -f
+```
+
+### Тестирование прямых провайдеров
+
+```bash
+# Запуск standalone WhatsApp API (альтернативный способ)
 npm start -- --mode whatsapp-api --api-port 3001
 
-# Проверка назначенного порта в логах
-export WHATSAPP_API_PORT=3001
+# Запуск standalone Telegram API
+npm start -- --mode telegram-api --api-port 4001 --telegram-bot-token YOUR_BOT_TOKEN
 ```
 
 ### API Endpoints тестирование
 
-#### Базовые проверки
+#### Multi-Provider API тестирование
 
 ```bash
-# Health check
-curl http://localhost:$WHATSAPP_API_PORT/api/v1/health
+# Список активных провайдеров
+curl http://localhost:3000/api/v1/multi-provider/active-providers
+
+# Статистика провайдеров
+curl http://localhost:3000/api/v1/multi-provider/stats
+
+# Список всех инстансов
+curl http://localhost:3000/api/v1/multi-provider/instances
+
+# Список инстансов конкретного провайдера
+curl http://localhost:3000/api/v1/multi-provider/instances?provider=telegram
+```
+
+#### WhatsApp Web API тестирование
+
+```bash
+# Health check (через Instance Manager)
+curl http://localhost:3000/api/v1/instances/{INSTANCE_ID}/health
 
 # Статус аутентификации
 curl -H "Authorization: Bearer YOUR_API_KEY" \
-  http://localhost:$WHATSAPP_API_PORT/api/v1/status
+  http://localhost:ASSIGNED_PORT/api/v1/status
+
+# Получение QR кода
+curl http://localhost:3000/api/v1/instances/{INSTANCE_ID}/qr
 ```
 
 #### Получение данных
@@ -330,15 +463,24 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
   http://localhost:$WHATSAPP_API_PORT/api/v1/account
 ```
 
-#### Отправка сообщений
+#### Отправка сообщений через Multi-Provider API
 
 ```bash
-# Отправка текстового сообщения
-curl -X POST http://localhost:7965/api/v1/send \
-  -H "Authorization: Bearer 691d553a-f1ed-4983-8d3b-6d24cb3b4fd7" \
+# Отправка сообщения через Multi-Provider API
+curl -X POST http://localhost:3000/api/v1/multi-provider/instances/whatsappweb/{INSTANCE_ID}/send-message \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "number": "77475318623",
+    "to": "1234567890",
+    "message": "Тестовое сообщение через Multi-Provider API"
+  }'
+
+# Отправка сообщения через прямой API WhatsApp
+curl -X POST http://localhost:ASSIGNED_PORT/api/v1/send \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "number": "1234567890",
     "message": "Тестовое сообщение"
   }'
 
@@ -424,12 +566,16 @@ curl -X POST http://localhost:3000/api/v1/instances/{INSTANCE_ID}/process \
 ### Подготовка Telegram бота
 
 ```bash
-# 1. Создание бота через @BotFather
+# 1. Создание бота через @BotFather в Telegram
 # 2. Получение Bot Token
 export TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN"
 
 # 3. Проверка работоспособности бота
 curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe" | jq .
+
+# 4. Получение Chat ID (отправьте сообщение боту)
+curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getUpdates" | jq '.result[-1].message.chat.id'
+export TELEGRAM_CHAT_ID="YOUR_CHAT_ID"
 ```
 
 ### Создание Telegram экземпляра
@@ -477,19 +623,22 @@ curl -H "Authorization: Bearer $TELEGRAM_BOT_TOKEN" \
 #### Отправка сообщений
 
 ```bash
-# Получение Chat ID (написать боту сообщение в Telegram)
-curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getUpdates" | \
-  jq '.result[-1].message.chat.id'
-
-export TELEGRAM_CHAT_ID="your-chat-id"
-
-# Отправка текстового сообщения
-curl -X POST http://localhost:4325/api/v1/telegram/send \
-  -H "Authorization: Bearer 7961413009:AAGEp-pakPC5OmvgTyXBLmNGoSlLdCAzg28" \
+# Отправка через Multi-Provider API
+curl -X POST http://localhost:3000/api/v1/multi-provider/instances/telegram/{INSTANCE_ID}/send-message \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "chatId": "134527512",
-    "message": "🚀 салют!"
+    "to": "'$TELEGRAM_CHAT_ID'",
+    "message": "🚀 Тестовое сообщение через Multi-Provider API!"
+  }'
+
+# Отправка через прямой Telegram API
+curl -X POST http://localhost:ASSIGNED_PORT/api/v1/telegram/send \
+  -H "Authorization: Bearer $TELEGRAM_BOT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chatId": "'$TELEGRAM_CHAT_ID'",
+    "message": "🚀 Привет из Telegram API!"
   }'
 
 # Отправка форматированного сообщения
@@ -629,15 +778,96 @@ TELEGRAM_CHAT_ID="YOUR_CHAT_ID" \
 node test-telegram-full.js
 ```
 
-## 🔗 Интеграционное тестирование
+## 🔗 Интеграционное тестирование Multi-Provider
 
-### Создание интеграционных тестов
+### Тестирование Multi-Provider API
 
 ```bash
-mkdir -p test/integration
+# Создание тестов для Multi-Provider API
+mkdir -p test/multi-provider
 
-# Полный интеграционный тест
-cat > test/integration/full-system.test.js << 'EOF'
+# Тест создания экземпляров всех провайдеров
+cat > test/multi-provider/create-instances.test.js << 'EOF'
+const axios = require('axios');
+
+describe('Multi-Provider Instance Creation', () => {
+  const BASE_URL = 'http://localhost:3000/api/v1/multi-provider';
+  
+  const providerConfigs = {
+    telegram: {
+      provider: 'telegram',
+      config: {
+        botToken: process.env.TELEGRAM_BOT_TOKEN || 'test-token',
+        authStrategy: 'none',
+        dockerContainer: false
+      }
+    },
+    discord: {
+      provider: 'discord',
+      config: {
+        botToken: process.env.DISCORD_BOT_TOKEN || 'test-token',
+        clientId: 'test-client-id',
+        authStrategy: 'none',
+        dockerContainer: false
+      }
+    }
+  };
+
+  describe('Provider Instance Management', () => {
+    let createdInstances = [];
+
+    afterAll(async () => {
+      // Cleanup created instances
+      for (const instanceId of createdInstances) {
+        try {
+          await axios.delete(`${BASE_URL}/instances/${instanceId}`);
+        } catch (error) {
+          console.warn(`Failed to cleanup instance ${instanceId}`);
+        }
+      }
+    });
+
+    test('should create Telegram instance', async () => {
+      const response = await axios.post(`${BASE_URL}/instances`, providerConfigs.telegram);
+      
+      expect(response.status).toBe(201);
+      expect(response.data.provider).toBe('telegram');
+      expect(response.data.instanceId).toBeDefined();
+      
+      createdInstances.push(response.data.instanceId);
+    });
+
+    test('should create Discord instance', async () => {
+      const response = await axios.post(`${BASE_URL}/instances`, providerConfigs.discord);
+      
+      expect(response.status).toBe(201);
+      expect(response.data.provider).toBe('discord');
+      expect(response.data.instanceId).toBeDefined();
+      
+      createdInstances.push(response.data.instanceId);
+    });
+
+    test('should list all instances', async () => {
+      const response = await axios.get(`${BASE_URL}/instances`);
+      
+      expect(response.status).toBe(200);
+      expect(response.data.instances).toBeDefined();
+      expect(response.data.instances.length).toBeGreaterThanOrEqual(2);
+    });
+
+    test('should get active providers', async () => {
+      const response = await axios.get(`${BASE_URL}/active-providers`);
+      
+      expect(response.status).toBe(200);
+      expect(response.data.providers).toBeDefined();
+      expect(response.data.providers).toContain('telegram');
+    });
+  });
+});
+EOF
+
+# Интеграционный тест Instance Manager с Multi-Provider
+cat > test/integration/instance-manager-multi-provider.test.js << 'EOF'
 const axios = require('axios');
 
 describe('Full System Integration', () => {
@@ -812,6 +1042,77 @@ chmod +x test-e2e-complete.sh
 TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN" ./test-e2e-complete.sh
 ```
 
+### Тестирование миграции базы данных
+
+```bash
+# Создание тестового скрипта для миграции
+cat > test-database-migration.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "🔄 Тестирование миграции базы данных"
+echo "====================================="
+
+# 1. Проверка текущего состояния
+echo "1️⃣ Проверка текущего состояния базы данных..."
+docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
+SELECT table_name 
+FROM information_schema.tables 
+WHERE table_schema = 'ai' 
+AND table_name LIKE '%instances%';"
+
+# 2. Создание тестовых данных (если нужно)
+echo "2️⃣ Создание тестовых данных..."
+docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
+INSERT INTO ai.whatsappweb_instances (user_id, provider, type_instance) 
+VALUES ('test-migration-user', 'whatsappweb', ARRAY['api'])
+ON CONFLICT DO NOTHING;"
+
+# 3. Применение миграции
+echo "3️⃣ Применение миграции разделения таблиц..."
+docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -f /app/db/migrations/versions/001_split_provider_tables.sql || echo "Миграция уже применена"
+
+# 4. Проверка результатов миграции
+echo "4️⃣ Проверка результатов миграции..."
+docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
+SELECT table_name, table_schema 
+FROM information_schema.tables 
+WHERE table_schema = 'ai' 
+AND table_name LIKE '%instances%'
+ORDER BY table_name;"
+
+# 5. Проверка VIEW all_instances
+echo "5️⃣ Проверка VIEW all_instances..."
+docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
+SELECT provider, COUNT(*) as count 
+FROM ai.all_instances 
+GROUP BY provider;"
+
+# 6. Тест rollback (опционально)
+if [ "$1" = "test-rollback" ]; then
+    echo "6️⃣ Тестирование rollback..."
+    docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -f /app/db/migrations/versions/001_split_provider_tables_rollback.sql
+    
+    echo "Проверка после rollback:"
+    docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = 'ai' 
+    AND table_name LIKE '%instances%';"
+fi
+
+echo "✅ Тестирование миграции завершено"
+EOF
+
+chmod +x test-database-migration.sh
+
+# Запуск теста миграции
+./test-database-migration.sh
+
+# Запуск теста с rollback
+# ./test-database-migration.sh test-rollback
+```
+
 ## 🛠️ Устранение неполадок
 
 ### Частые проблемы и решения
@@ -980,11 +1281,13 @@ chmod +x diagnose-system.sh
 ### 🎯 Критерии готовности к продакшену
 
 - [x] Instance Manager полностью протестирован
-- [x] WhatsApp и Telegram интеграции работают
-- [x] Supabase Cloud база данных настроена
+- [x] Multi-Provider система реализована и протестирована
+- [x] WhatsApp Web, Telegram, WhatsApp Official, Discord интеграции работают
+- [x] Supabase Cloud база данных настроена с разделенными таблицами провайдеров
 - [x] REST API endpoints документированы и протестированы
+- [x] Миграция базы данных с rollback функциональностью
 - [x] Мониторинг и диагностика реализованы
-- [x] E2E тесты автоматизированы
+- [x] E2E тесты автоматизированы для всех провайдеров
 - [x] Документация по устранению неполадок готова
 
 ### 🚀 Архитектурные особенности
@@ -998,7 +1301,30 @@ chmod +x diagnose-system.sh
 
 ---
 
-**Последнее обновление**: 28 января 2025  
-**Версия системы**: wweb-mcp v0.2.6-dev-hotreload-test  
-**Статус**: ✅ Production Ready с Supabase Cloud  
-**Автор**: AI Assistant с анализом реальной архитектуры проекта 
+**Последнее обновление**: 29 января 2025  
+**Версия системы**: wweb-mcp v0.2.4 Multi-Provider Edition  
+**Статус**: ✅ Production Ready с Multi-Provider Support и Supabase Cloud  
+**Автор**: AI Assistant с полным анализом архитектуры проекта
+
+## 🔄 Новые возможности v2.0
+
+### Multi-Provider Architecture
+- **Единый API** для всех мессенджеров
+- **Разделенные таблицы** для каждого провайдера в базе данных
+- **Автоматическая миграция** с rollback функциональностью
+- **Webhook поддержка** для всех провайдеров
+
+### Поддерживаемые провайдеры
+1. **WhatsApp Web** - основной провайдер (whatsapp-web.js)
+2. **Telegram** - Bot API интеграция
+3. **WhatsApp Official** - Facebook Graph API
+4. **Facebook Messenger** - Facebook Graph API
+5. **Instagram** - Instagram Basic Display API
+6. **Slack** - Slack Web API
+7. **Discord** - Discord.js интеграция
+
+### База данных
+- **Схема ai**: Основная рабочая схема
+- **Разделенные таблицы**: `whatsappweb_instances`, `telegram_instances`, `discord_instances`, etc.
+- **VIEW all_instances**: Объединенный вид всех провайдеров
+- **Миграции**: Автоматическое разделение таблиц с rollback 

@@ -46,15 +46,15 @@ export async function testDatabaseConnection(): Promise<boolean> {
       schemasResult.rows.map(row => row.schema_name),
     );
 
-    // Проверяем существующие таблицы в public схеме
+    // Проверяем существующие таблицы в ai схеме
     const tablesResult = await client.query(`
       SELECT table_name 
       FROM information_schema.tables 
-      WHERE table_schema = 'public' 
+      WHERE table_schema = 'ai' 
       ORDER BY table_name
     `);
     logger.info(
-      'Таблицы в схеме public:',
+      'Таблицы в схеме ai:',
       tablesResult.rows.map(row => row.table_name),
     );
 
@@ -90,7 +90,7 @@ export async function createTablesIfNotExists(): Promise<boolean> {
 
     // Создаем таблицу messages
     await client.query(`
-      CREATE TABLE IF NOT EXISTS public.messages (
+      CREATE TABLE IF NOT EXISTS ai.messages (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         instance_id UUID NOT NULL,
         message_id VARCHAR(255) NOT NULL,
@@ -113,16 +113,16 @@ export async function createTablesIfNotExists(): Promise<boolean> {
 
     // Создаем индексы
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_messages_instance_id ON public.messages(instance_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON public.messages(chat_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON public.messages(timestamp);
-      CREATE INDEX IF NOT EXISTS idx_messages_from_number ON public.messages(from_number);
-      CREATE INDEX IF NOT EXISTS idx_messages_is_group ON public.messages(is_group);
+      CREATE INDEX IF NOT EXISTS idx_messages_instance_id ON ai.messages(instance_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON ai.messages(chat_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON ai.messages(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_messages_from_number ON ai.messages(from_number);
+      CREATE INDEX IF NOT EXISTS idx_messages_is_group ON ai.messages(is_group);
     `);
 
     // Создаем таблицу message_instances
     await client.query(`
-      CREATE TABLE IF NOT EXISTS public.message_instances (
+      CREATE TABLE IF NOT EXISTS ai.message_instances (
         id UUID PRIMARY KEY,
         user_id VARCHAR NOT NULL,
         provider VARCHAR NOT NULL DEFAULT 'whatsappweb',
@@ -139,8 +139,8 @@ export async function createTablesIfNotExists(): Promise<boolean> {
 
     // Создаем индексы для message_instances
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_message_instances_user_id ON public.message_instances(user_id);
-      CREATE INDEX IF NOT EXISTS idx_message_instances_provider ON public.message_instances(provider);
+      CREATE INDEX IF NOT EXISTS idx_message_instances_user_id ON ai.message_instances(user_id);
+      CREATE INDEX IF NOT EXISTS idx_message_instances_provider ON ai.message_instances(provider);
     `);
 
     client.release();

@@ -1,7 +1,15 @@
 import { ClientInfo } from 'whatsapp-web.js';
 
 // Общие типы для провайдеров мессенджеров
-export type MessengerProvider = 'whatsapp' | 'telegram';
+export type MessengerProvider =
+  | 'whatsapp'
+  | 'whatsappweb'
+  | 'telegram'
+  | 'whatsapp-official'
+  | 'facebook-messenger'
+  | 'instagram'
+  | 'slack'
+  | 'discord';
 
 export interface BaseProviderConfig {
   provider: MessengerProvider;
@@ -23,7 +31,55 @@ export interface TelegramConfig extends BaseProviderConfig {
   webhookSecret?: string;
 }
 
-export type ProviderConfig = WhatsAppConfig | TelegramConfig;
+export interface WhatsAppOfficialConfig extends BaseProviderConfig {
+  provider: 'whatsapp-official';
+  phoneNumberId: string;
+  accessToken: string;
+  webhookVerifyToken?: string;
+  version?: string; // API version
+}
+
+export interface FacebookMessengerConfig extends BaseProviderConfig {
+  provider: 'facebook-messenger';
+  pageAccessToken: string;
+  appSecret: string;
+  webhookVerifyToken?: string;
+  version?: string; // API version
+}
+
+export interface InstagramConfig extends BaseProviderConfig {
+  provider: 'instagram';
+  accessToken: string;
+  instagramUserId: string;
+  appSecret?: string;
+  webhookVerifyToken?: string;
+}
+
+export interface SlackConfig extends BaseProviderConfig {
+  provider: 'slack';
+  botToken: string;
+  appToken?: string;
+  signingSecret: string;
+  socketMode?: boolean;
+  webhookUrl?: string;
+}
+
+export interface DiscordConfig extends BaseProviderConfig {
+  provider: 'discord';
+  botToken: string;
+  clientId: string;
+  guildId?: string; // для серверных команд
+  intents?: number[];
+}
+
+export type ProviderConfig =
+  | WhatsAppConfig
+  | TelegramConfig
+  | WhatsAppOfficialConfig
+  | FacebookMessengerConfig
+  | InstagramConfig
+  | SlackConfig
+  | DiscordConfig;
 
 // Общие интерфейсы для всех провайдеров
 export interface BaseStatusResponse {
@@ -51,7 +107,66 @@ export interface TelegramStatusResponse extends BaseStatusResponse {
   state?: 'READY' | 'DISCONNECTED' | 'ERROR';
 }
 
-export type StatusResponse = WhatsAppStatusResponse | TelegramStatusResponse;
+export interface WhatsAppOfficialStatusResponse extends BaseStatusResponse {
+  provider: 'whatsapp-official';
+  info?: {
+    phoneNumberId: string;
+    businessAccountId: string;
+    displayName: string;
+  };
+  state?: 'READY' | 'DISCONNECTED' | 'ERROR';
+}
+
+export interface FacebookMessengerStatusResponse extends BaseStatusResponse {
+  provider: 'facebook-messenger';
+  info?: {
+    pageId: string;
+    pageName: string;
+    category: string;
+  };
+  state?: 'READY' | 'DISCONNECTED' | 'ERROR';
+}
+
+export interface InstagramStatusResponse extends BaseStatusResponse {
+  provider: 'instagram';
+  info?: {
+    userId: string;
+    username: string;
+    accountType: string;
+  };
+  state?: 'READY' | 'DISCONNECTED' | 'ERROR';
+}
+
+export interface SlackStatusResponse extends BaseStatusResponse {
+  provider: 'slack';
+  info?: {
+    teamId: string;
+    teamName: string;
+    botId: string;
+    appId: string;
+  };
+  state?: 'READY' | 'DISCONNECTED' | 'ERROR';
+}
+
+export interface DiscordStatusResponse extends BaseStatusResponse {
+  provider: 'discord';
+  info?: {
+    botId: string;
+    username: string;
+    discriminator: string;
+    guildCount?: number;
+  };
+  state?: 'READY' | 'DISCONNECTED' | 'ERROR';
+}
+
+export type StatusResponse =
+  | WhatsAppStatusResponse
+  | TelegramStatusResponse
+  | WhatsAppOfficialStatusResponse
+  | FacebookMessengerStatusResponse
+  | InstagramStatusResponse
+  | SlackStatusResponse
+  | DiscordStatusResponse;
 
 export interface ContactResponse {
   name: string;

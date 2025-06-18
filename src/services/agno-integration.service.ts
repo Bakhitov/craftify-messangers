@@ -64,7 +64,7 @@ export class AgnoIntegrationService {
 
       const query = `
         SELECT agent_id, agno_enable, stream, user_id 
-        FROM public.message_instances 
+        FROM ai.message_instances 
         WHERE id = $1 
           AND agno_enable = TRUE 
           AND agent_id IS NOT NULL

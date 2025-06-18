@@ -43,11 +43,11 @@ export class DockerService {
 
   async ensureNetworkExists(): Promise<void> {
     const networkName = 'wweb-network';
-    
+
     try {
       // Проверяем существование сети
       const networks = await this.docker.listNetworks({
-        filters: { name: [networkName] }
+        filters: { name: [networkName] },
       });
 
       if (networks.length === 0) {
@@ -59,10 +59,10 @@ export class DockerService {
             Driver: 'default',
             Config: [
               {
-                Subnet: '172.20.0.0/16'
-              }
-            ]
-          }
+                Subnet: '172.20.0.0/16',
+              },
+            ],
+          },
         });
         logger.info(`Docker network ${networkName} created successfully`);
       } else {

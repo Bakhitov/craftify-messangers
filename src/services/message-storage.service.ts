@@ -26,7 +26,7 @@ export class MessageStorageService {
   private pool: Pool;
   private schema: string;
 
-  constructor(pool: Pool, schema: string = 'public') {
+  constructor(pool: Pool, schema: string = 'ai') {
     this.pool = pool;
     this.schema = schema;
   }

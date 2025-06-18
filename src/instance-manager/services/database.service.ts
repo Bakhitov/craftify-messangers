@@ -70,7 +70,7 @@ export class DatabaseService {
     try {
       // Создаем схему
       await this.pool.query(CREATE_SCHEMA_SQL);
-      logger.info('Database schema initialized (using public schema)');
+      logger.info('Database schema initialized (using ai schema)');
 
       // Создаем таблицу
       await this.pool.query(CREATE_TABLE_SQL);
@@ -133,7 +133,7 @@ export class DatabaseService {
 
   async getInstanceById(id: string): Promise<MessageInstance | null> {
     const result = await this.pool.query<MessageInstance>(
-      'SELECT * FROM public.message_instances WHERE id = $1',
+      'SELECT * FROM ai.message_instances WHERE id = $1',
       [id],
     );
 
@@ -144,7 +144,7 @@ export class DatabaseService {
     user_id?: string;
     provider?: string;
   }): Promise<MessageInstance[]> {
-    let query = 'SELECT * FROM public.message_instances WHERE 1=1';
+    let query = 'SELECT * FROM ai.message_instances WHERE 1=1';
     const params: unknown[] = [];
     let paramIndex = 1;
 
@@ -191,7 +191,7 @@ export class DatabaseService {
 
     values.push(id);
     const query = `
-      UPDATE public.message_instances 
+      UPDATE ai.message_instances 
       SET ${updateFields.join(', ')}
       WHERE id = $${paramIndex}
       RETURNING *
@@ -202,7 +202,7 @@ export class DatabaseService {
   }
 
   async deleteInstance(id: string): Promise<boolean> {
-    const result = await this.pool.query('DELETE FROM public.message_instances WHERE id = $1', [
+    const result = await this.pool.query('DELETE FROM ai.message_instances WHERE id = $1', [
       id,
     ]);
 
@@ -213,7 +213,7 @@ export class DatabaseService {
     if (ports.length === 0) return [];
 
     const result = await this.pool.query<MessageInstance>(
-      'SELECT * FROM public.message_instances WHERE port_api = ANY($1) OR port_mcp = ANY($1)',
+      'SELECT * FROM ai.message_instances WHERE port_api = ANY($1) OR port_mcp = ANY($1)',
       [ports],
     );
 
@@ -221,7 +221,7 @@ export class DatabaseService {
   }
 
   async countInstances(filters?: { user_id?: string; provider?: string }): Promise<number> {
-    let query = 'SELECT COUNT(*) as count FROM public.message_instances WHERE 1=1';
+    let query = 'SELECT COUNT(*) as count FROM ai.message_instances WHERE 1=1';
     const params: unknown[] = [];
     let paramIndex = 1;
 
@@ -264,7 +264,7 @@ export class DatabaseService {
     auth_status?: string; // Статус аутентификации
   }): Promise<MessageInstance> {
     const query = `
-      INSERT INTO public.message_instances (
+      INSERT INTO ai.message_instances (
         id, user_id, provider, type_instance, api_webhook_schema, mcp_schema, 
         api_key, token, agent_id, agno_enable, stream, auth_status, created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())

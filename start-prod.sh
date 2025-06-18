@@ -223,7 +223,7 @@ fi
 echo -e "${BLUE}🔧 Создание сети wweb-network...${NC}"
 docker network create \
     --driver bridge \
-    --subnet=172.20.0.0/16 \
+    --subnet=172.21.0.0/16 \
     wweb-network
 echo -e "${GREEN}✅ Сеть wweb-network создана с правильной конфигурацией${NC}"
 

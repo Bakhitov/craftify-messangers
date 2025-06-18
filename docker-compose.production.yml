@@ -17,7 +17,7 @@ services:
       DATABASE_NAME: ${DATABASE_NAME}
       DATABASE_USER: ${DATABASE_USER}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
-      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-public}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-ai}
       DATABASE_SSL: ${DATABASE_SSL:-true}
       USE_SUPABASE: ${USE_SUPABASE:-true}
       
@@ -86,4 +86,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16 
+        - subnet: 172.21.0.0/16 
