@@ -227,28 +227,10 @@ async function startMcpCommandServer(
   }
 }
 
-async function getWhatsAppApiKey(whatsAppConfig: WhatsAppConfig): Promise<string> {
-  // Если INSTANCE_ID передан через переменную окружения, используем его как API ключ
-  if (process.env.INSTANCE_ID) {
-    logger.info(`Using INSTANCE_ID as API key: ${process.env.INSTANCE_ID}`);
-    return process.env.INSTANCE_ID;
-  }
-
-  // Иначе используем стандартную логику генерации ключа
-  if (whatsAppConfig.authStrategy === 'none') {
-    return crypto.randomBytes(32).toString('hex');
-  }
-  const authDataPath = whatsAppConfig.authDataPath;
-  if (!authDataPath) {
-    throw new Error('The auth-data-path is required when using whatsapp-api mode');
-  }
-  const apiKeyPath = path.join(authDataPath, 'api_key.txt');
-  if (!fs.existsSync(apiKeyPath)) {
-    const apiKey = crypto.randomBytes(32).toString('hex');
-    fs.writeFileSync(apiKeyPath, apiKey);
-    return apiKey;
-  }
-  return fs.readFileSync(apiKeyPath, 'utf8');
+async function getWhatsAppApiKey(instanceId: string): Promise<string> {
+  // API ключ всегда равен instanceId
+  logger.info(`Using instance ID as static API key: ${instanceId}`);
+  return instanceId;
 }
 
 async function initializeDatabase(): Promise<{
@@ -400,7 +382,7 @@ async function startWhatsAppApiServer(
   const client = createWhatsAppClient(clientConfig);
   await client.initialize();
 
-  const apiKey = await getWhatsAppApiKey(whatsAppConfig);
+  const apiKey = await getWhatsAppApiKey(instanceId);
 
   // Сохраняем API ключ в память
   instanceMemoryService.saveApiKey(instanceId, apiKey, {
@@ -498,7 +480,7 @@ async function startWhatsAppApiServer(
   });
 }
 
-async function getTelegramApiKey(telegramConfig: TelegramConfig): Promise<string> {
+async function getTelegramApiKey(telegramConfig: TelegramConfig, _instanceId: string): Promise<string> {
   // Если INSTANCE_ID передан через переменную окружения, пытаемся получить token из БД
   if (process.env.INSTANCE_ID) {
     try {
@@ -534,21 +516,8 @@ async function getTelegramApiKey(telegramConfig: TelegramConfig): Promise<string
     return telegramConfig.botToken;
   }
 
-  // Иначе используем стандартную логику генерации ключа
-  if (telegramConfig.authStrategy === 'none') {
-    return crypto.randomBytes(32).toString('hex');
-  }
-  const authDataPath = telegramConfig.authDataPath;
-  if (!authDataPath) {
-    throw new Error('The auth-data-path is required when using telegram-api mode');
-  }
-  const apiKeyPath = path.join(authDataPath, 'api_key.txt');
-  if (!fs.existsSync(apiKeyPath)) {
-    const apiKey = crypto.randomBytes(32).toString('hex');
-    fs.writeFileSync(apiKeyPath, apiKey);
-    return apiKey;
-  }
-  return fs.readFileSync(apiKeyPath, 'utf8');
+  // Fallback - возвращаем ошибку, так как bot token обязателен для Telegram
+  throw new Error('Bot token is required for Telegram API');
 }
 
 async function startTelegramApiServer(
@@ -560,10 +529,10 @@ async function startTelegramApiServer(
 
   // Получаем instanceId и botToken
   const instanceId = process.env.INSTANCE_ID || crypto.randomUUID();
-  const botToken = await getTelegramApiKey(telegramConfig);
+  const botToken = await getTelegramApiKey(telegramConfig, instanceId);
 
-  // Генерируем отдельный API ключ для авторизации API
-  const apiKey = crypto.randomBytes(32).toString('hex');
+  // API ключ всегда равен instanceId
+  const apiKey = instanceId;
 
   // Создаем запись в памяти для инстанса
   instanceMemoryService.setInstance(instanceId, {
@@ -597,7 +566,7 @@ async function startTelegramApiServer(
     source: 'main.ts:startTelegramApiServer',
   });
 
-  // ДОБАВЛЯЕМ: Автоматическое обновление API ключа в БД при наличии instanceId
+  // Автоматическое обновление API ключа в БД при наличии instanceId
   if (instanceId && process.env.INSTANCE_ID) {
     try {
       logger.info(`Updating API key in database for Telegram instance: ${instanceId}`);

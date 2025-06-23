@@ -63,10 +63,6 @@ curl http://localhost:3000/health
 
 ```
 
-
-tail -f instance-manager.log
-
-
 # Остановить все связанные контейнеры
 docker-compose -f docker-compose.instance-manager.yml down
 
@@ -82,6 +78,7 @@ docker network prune
 lsof -i :3000
 kill -9 <PID>
 pkill -f "main-instance-manager"
+tail -f instance-manager.log
 
 
 #### 4. Проверка подключения к Supabase
@@ -191,7 +188,7 @@ curl -X POST http://localhost:3000/api/v1/instances \
 -H "Content-Type: application/json" \
 -d '{
     "user_id": "test-telegram-user-001",
-    "agent_id": "240222",
+    "agent_id": "671088",
     "provider": "telegram",
     "agno_enable": true,
     "stream": false,
@@ -476,11 +473,11 @@ curl -X POST http://localhost:3000/api/v1/multi-provider/instances/whatsappweb/{
   }'
 
 # Отправка сообщения через прямой API WhatsApp
-curl -X POST http://localhost:ASSIGNED_PORT/api/v1/send \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST http://localhost:4699/api/v1/send \
+  -H "Authorization: Bearer b7542e75-2a76-43cb-9ed0-c0d3ecbbcef2" \
   -H "Content-Type: application/json" \
   -d '{
-    "number": "1234567890",
+    "number": "77475318623",
     "message": "Тестовое сообщение"
   }'
 
@@ -633,11 +630,11 @@ curl -X POST http://localhost:3000/api/v1/multi-provider/instances/telegram/{INS
   }'
 
 # Отправка через прямой Telegram API
-curl -X POST http://localhost:ASSIGNED_PORT/api/v1/telegram/send \
-  -H "Authorization: Bearer $TELEGRAM_BOT_TOKEN" \
+curl -X POST http://localhost:5064/api/v1/telegram/send \
+  -H "Authorization: Bearer ce55ad31-8f7d-455f-bd99-5c5d68e413a5" \
   -H "Content-Type: application/json" \
   -d '{
-    "chatId": "'$TELEGRAM_CHAT_ID'",
+    "chatId": "134527512",
     "message": "🚀 Привет из Telegram API!"
   }'
 

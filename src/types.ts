@@ -357,3 +357,27 @@ export interface AppConfig {
     enabled: boolean;
   };
 }
+
+export interface MessageData {
+  instance_id: string;
+  message_id: string;
+  chat_id: string;
+  from_number?: string;
+  to_number?: string;
+  message_body?: string;
+  message_type?: string;
+  is_from_me?: boolean;
+  is_group?: boolean;
+  group_id?: string;
+  contact_name?: string;
+  agent_id?: string;
+  session_id?: string;
+  timestamp?: number;
+  message_source?: 'user' | 'agno' | 'device' | 'api'; // Источник сообщения
+}
+
+export interface StoredMessage extends MessageData {
+  id: string;
+  created_at: Date;
+  updated_at: Date;
+}

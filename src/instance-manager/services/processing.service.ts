@@ -83,13 +83,19 @@ export class ProcessingService {
               instance,
               60, // 2 минуты
               async (newApiKey: string) => {
-                // Немедленно обновляем API ключ в базе данных
-                await this.databaseService.updateInstance(instanceId, {
-                  api_key: newApiKey,
-                  current_api_key: newApiKey,
-                  api_key_generated_at: new Date(),
-                });
-                instance.api_key = newApiKey; // Обновляем локальную копию
+                // Обновляем API ключ в базе данных только если он отличается от instanceId
+                if (newApiKey !== instanceId) {
+                  await this.databaseService.updateInstance(instanceId, {
+                    api_key: newApiKey,
+                    api_key_generated_at: new Date(),
+                  });
+                  instance.api_key = newApiKey; // Обновляем локальную копию
+                } else {
+                  // Если API ключ равен instanceId, просто обновляем время генерации
+                  await this.databaseService.updateInstance(instanceId, {
+                    api_key_generated_at: new Date(),
+                  });
+                }
 
                 // Синхронизируем с memory service
                 instanceMemoryService.saveApiKey(instanceId, newApiKey, {
@@ -135,13 +141,19 @@ export class ProcessingService {
               instance,
               60, // 2 минуты
               async (newApiKey: string) => {
-                // Немедленно обновляем API ключ в базе данных
-                await this.databaseService.updateInstance(instanceId, {
-                  api_key: newApiKey,
-                  current_api_key: newApiKey,
-                  api_key_generated_at: new Date(),
-                });
-                instance.api_key = newApiKey; // Обновляем локальную копию
+                // Обновляем API ключ в базе данных только если он отличается от instanceId
+                if (newApiKey !== instanceId) {
+                  await this.databaseService.updateInstance(instanceId, {
+                    api_key: newApiKey,
+                    api_key_generated_at: new Date(),
+                  });
+                  instance.api_key = newApiKey; // Обновляем локальную копию
+                } else {
+                  // Если API ключ равен instanceId, просто обновляем время генерации
+                  await this.databaseService.updateInstance(instanceId, {
+                    api_key_generated_at: new Date(),
+                  });
+                }
 
                 // Синхронизируем с memory service
                 instanceMemoryService.saveApiKey(instanceId, newApiKey, {
@@ -183,13 +195,19 @@ export class ProcessingService {
               instance,
               60, // 2 минуты
               async (newApiKey: string) => {
-                // Немедленно обновляем API ключ в базе данных
-                await this.databaseService.updateInstance(instanceId, {
-                  api_key: newApiKey,
-                  current_api_key: newApiKey,
-                  api_key_generated_at: new Date(),
-                });
-                instance.api_key = newApiKey; // Обновляем локальную копию
+                // Обновляем API ключ в базе данных только если он отличается от instanceId
+                if (newApiKey !== instanceId) {
+                  await this.databaseService.updateInstance(instanceId, {
+                    api_key: newApiKey,
+                    api_key_generated_at: new Date(),
+                  });
+                  instance.api_key = newApiKey; // Обновляем локальную копию
+                } else {
+                  // Если API ключ равен instanceId, просто обновляем время генерации
+                  await this.databaseService.updateInstance(instanceId, {
+                    api_key_generated_at: new Date(),
+                  });
+                }
 
                 // Синхронизируем с memory service
                 instanceMemoryService.saveApiKey(instanceId, newApiKey, {

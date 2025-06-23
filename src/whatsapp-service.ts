@@ -213,8 +213,31 @@ export class WhatsAppService {
       // Format the chat ID
       const chatId = number.includes('@c.us') ? number : `${number}@c.us`;
 
-      // Send the message
-      const result = await this.client.sendMessage(chatId, message);
+      // Send the message with API source tracking
+      let result;
+      try {
+        // Пытаемся использовать новый метод с отслеживанием источника
+        if (typeof (this.client as any).sendMessageWithSource === 'function') {
+          result = await (this.client as any).sendMessageWithSource(chatId, message, 'api');
+        } else {
+          // Fallback на обычный метод если новый не доступен
+          logger.warn('sendMessageWithSource not available, using fallback');
+          result = await this.client.sendMessage(chatId, message);
+          // Добавляем в исключения вручную
+          if ((this.client as any).addApiMessageId) {
+            (this.client as any).addApiMessageId(result.id._serialized);
+          }
+        }
+      } catch (error) {
+        // Если новый метод не работает, используем старый
+        logger.warn('sendMessageWithSource failed, using fallback', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        result = await this.client.sendMessage(chatId, message);
+        if ((this.client as any).addApiMessageId) {
+          (this.client as any).addApiMessageId(result.id._serialized);
+        }
+      }
 
       logger.debug('Outgoing message sent', {
         to: number,
@@ -235,6 +258,7 @@ export class WhatsAppService {
             message_type: 'text',
             is_group: false,
             contact_name: undefined,
+            message_source: 'api',
             timestamp: Date.now(),
           });
         } catch (error) {
@@ -399,8 +423,31 @@ export class WhatsAppService {
       // Format the group ID
       const formattedGroupId = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`;
 
-      // Send the message
-      const result = await this.client.sendMessage(formattedGroupId, message);
+      // Send the message with API source tracking
+      let result;
+      try {
+        // Пытаемся использовать новый метод с отслеживанием источника
+        if (typeof (this.client as any).sendMessageWithSource === 'function') {
+          result = await (this.client as any).sendMessageWithSource(formattedGroupId, message, 'api');
+        } else {
+          // Fallback на обычный метод если новый не доступен
+          logger.warn('sendMessageWithSource not available for group, using fallback');
+          result = await this.client.sendMessage(formattedGroupId, message);
+          // Добавляем в исключения вручную
+          if ((this.client as any).addApiMessageId) {
+            (this.client as any).addApiMessageId(result.id._serialized);
+          }
+        }
+      } catch (error) {
+        // Если новый метод не работает, используем старый
+        logger.warn('sendMessageWithSource failed for group, using fallback', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        result = await this.client.sendMessage(formattedGroupId, message);
+        if ((this.client as any).addApiMessageId) {
+          (this.client as any).addApiMessageId(result.id._serialized);
+        }
+      }
 
       logger.debug(`Outgoing group message to ${groupId}: ${message}`);
 
@@ -418,6 +465,7 @@ export class WhatsAppService {
             is_group: true,
             group_id: formattedGroupId,
             contact_name: undefined,
+            message_source: 'api',
             timestamp: Date.now(),
           });
         } catch (error) {

@@ -20,7 +20,6 @@ export interface BaseInstanceData {
   port_api?: number;
   port_mcp?: number;
   api_key?: string;
-  current_api_key?: string;
   api_key_generated_at?: Date;
   api_webhook_schema?: any;
   mcp_schema?: any;
@@ -146,7 +145,6 @@ export class ProviderDatabaseService {
         'port_api',
         'port_mcp',
         'api_key',
-        'current_api_key',
         'api_webhook_schema',
         'mcp_schema',
         'agent_id',
@@ -164,7 +162,6 @@ export class ProviderDatabaseService {
         instanceData.port_api,
         instanceData.port_mcp,
         instanceData.api_key,
-        instanceData.current_api_key,
         JSON.stringify(instanceData.api_webhook_schema || {}),
         JSON.stringify(instanceData.mcp_schema || {}),
         instanceData.agent_id,
@@ -420,8 +417,6 @@ export class ProviderDatabaseService {
         'user_id',
         'port_api',
         'port_mcp',
-        'api_key',
-        'current_api_key',
         'api_webhook_schema',
         'mcp_schema',
         'agent_id',
@@ -506,7 +501,6 @@ export class ProviderDatabaseService {
       port_api: row.port_api,
       port_mcp: row.port_mcp,
       api_key: row.api_key,
-      current_api_key: row.current_api_key,
       api_key_generated_at: row.api_key_generated_at,
       api_webhook_schema: row.api_webhook_schema,
       mcp_schema: row.mcp_schema,

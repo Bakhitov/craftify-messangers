@@ -8,7 +8,7 @@ import { ExtendedClient } from './types';
 import { MessageStorageService } from './services/message-storage.service';
 import { instanceMemoryService } from './instance-manager/services/instance-memory.service';
 import { createPool, getDatabaseConfig } from './config/database.config';
-import { AgnoIntegrationService } from './services/agno-integration.service';
+import { AgnoIntegrationService, AgnoMediaFile } from './services/agno-integration.service';
 
 // Configuration interface
 export interface WhatsAppConfig {
@@ -102,8 +102,26 @@ function loadWebhookConfig(dataPath: string): WebhookConfig | undefined {
 }
 
 export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & ExtendedClient {
-  const authDataPath = config.authDataPath || '.wwebjs_auth';
-  const mediaStoragePath = config.mediaStoragePath || path.join(authDataPath, 'media');
+  const authDataPath = config.authDataPath || './wwebjs_auth';
+  const mediaStoragePath = config.mediaStoragePath || './wwebjs_media';
+  const webhookConfigFromFile = loadWebhookConfig(authDataPath);
+
+  // Sets для отслеживания сообщений, которые не должны обрабатываться как device messages
+  const agnoMessageIds = new Set<string>();
+  const apiMessageIds = new Set<string>();
+  
+  // Счетчики активных временных ID для быстрой проверки
+  let activeTempAgnoCount = 0;
+  let activeTempApiCount = 0;
+
+  logger.debug('WhatsApp client configuration', {
+    authDataPath,
+    mediaStoragePath,
+    authStrategy: config.authStrategy || 'local',
+    dockerContainer: config.dockerContainer || false,
+    instanceId: config.instanceId,
+    hasWebhookConfig: !!webhookConfigFromFile,
+  });
 
   // Создаем экземпляр AgnoIntegrationService
   const pool = createPool();
@@ -121,12 +139,12 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
 
   // Если webhookConfig не передан напрямую, используем файловую систему как запасной вариант
   if (!webhookConfig) {
-    webhookConfig = loadWebhookConfig(authDataPath);
+    webhookConfig = webhookConfigFromFile;
     if (webhookConfig) {
-      logger.info(`Loaded webhook config from file: ${JSON.stringify(webhookConfig)}`);
+      logger.info('Successfully loaded webhook config from file system');
+    } else {
+      logger.debug('No webhook config found in file system either');
     }
-  } else {
-    logger.info('Using webhook config from database api_webhook_schema');
   }
 
   // Итоговый статус загрузки webhook конфигурации
@@ -262,7 +280,7 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
       instanceMemoryService.registerError(config.instanceId, `Authentication failed: ${msg}`, {
         source: 'whatsapp-client.ts:auth_failure_event',
       });
-      instanceMemoryService.updateStatus(config.instanceId, 'failed', {
+      instanceMemoryService.updateStatus(config.instanceId, 'error', {
         source: 'whatsapp-client.ts:auth_failure_event',
         message: `Authentication failed: ${msg}`,
       });
@@ -283,7 +301,7 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
       instanceMemoryService.registerError(config.instanceId, `Client disconnected: ${reason}`, {
         source: 'whatsapp-client.ts:disconnected_event',
       });
-      instanceMemoryService.updateStatus(config.instanceId, 'failed', {
+      instanceMemoryService.updateStatus(config.instanceId, 'error', {
         source: 'whatsapp-client.ts:disconnected_event',
         message: `Client disconnected: ${reason}`,
       });
@@ -310,6 +328,15 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
     if (config.messageStorageService && config.instanceId) {
       const isGroup = message.from.includes('@g.us');
 
+      // Получаем agent_id из конфигурации Agno
+      let agentId: string | undefined;
+      try {
+        const agnoConfig = await agnoIntegrationService.getAgnoConfig(config.instanceId);
+        agentId = agnoConfig?.agentId;
+      } catch (error) {
+        // Игнорируем ошибки получения agent_id
+      }
+
       try {
         await config.messageStorageService.saveMessage({
           instance_id: config.instanceId,
@@ -323,6 +350,8 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
           is_group: isGroup,
           group_id: isGroup ? message.from : undefined,
           contact_name: contact.pushname || contact.name,
+          agent_id: agentId, // Добавляем agent_id
+          message_source: 'user', // Входящее сообщение от пользователя
           timestamp: message.timestamp,
         });
       } catch (error) {
@@ -394,17 +423,89 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
       try {
         const agnoConfig = await agnoIntegrationService.getAgnoConfig(config.instanceId);
         if (agnoConfig?.enabled) {
-          // Отправляем сообщение агенту
-          const agnoResponse = await agnoIntegrationService.sendToAgent(
+          // Генерируем session_id детерминированно из agent_id + chat_id
+          const chatId = message.from;
+          const sessionId = generateSessionId(agnoConfig.agentId, chatId);
+          
+          // Обновляем конфигурацию с сгенерированным session_id
+          const configWithSession = {
+            ...agnoConfig,
+            sessionId: sessionId
+          };
+
+          // Подготавливаем файлы для отправки в Agno если есть медиа
+          const agnoFiles: AgnoMediaFile[] = [];
+          let messageText = message.body;
+
+          // Если сообщение содержит медиа, скачиваем его
+          if (message.hasMedia) {
+            try {
+              const media = await message.downloadMedia();
+              if (media && media.data) {
+                // Определяем имя файла
+                const extension = media.mimetype.split('/')[1] || 'bin';
+                const filename = `media_${message.id._serialized.replace(/[^a-zA-Z0-9]/g, '_')}.${extension}`;
+                
+                // Конвертируем base64 в Buffer
+                const buffer = Buffer.from(media.data, 'base64');
+                
+                agnoFiles.push({
+                  buffer,
+                  filename,
+                  mimetype: media.mimetype,
+                });
+
+                // Добавляем описание файла к тексту сообщения
+                const fileDescription = `[${message.type.toUpperCase()}: ${filename}]`;
+                messageText = message.body ? `${message.body}\n\n${fileDescription}` : fileDescription;
+
+                logger.debug('Media file prepared for Agno', {
+                  messageId: message.id._serialized,
+                  filename,
+                  mimetype: media.mimetype,
+                  size: buffer.length,
+                });
+              }
+            } catch (error) {
+              logger.error('Failed to download media for Agno', {
+                messageId: message.id._serialized,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+
+          // Отправляем сообщение агенту (с файлами если есть)
+          const agnoResponse = await agnoIntegrationService.sendToAgentWithFiles(
             agnoConfig.agentId,
-            message.body,
-            agnoConfig, // Передаем полную конфигурацию
+            messageText,
+            configWithSession,
+            agnoFiles,
           );
 
           // Если получили ответ от агента
-          if (agnoResponse?.message) {
-            // Отправляем ответ пользователю
-            const sentMessage = await client.sendMessage(message.from, agnoResponse.message);
+          const responseMessage = agnoResponse?.content || agnoResponse?.message;
+          if (responseMessage) {
+            // Отправляем ответ пользователю с предварительным исключением
+            let sentMessage;
+            try {
+              // Пытаемся использовать новый метод с отслеживанием источника
+              if (typeof (client as any).sendMessageWithSource === 'function') {
+                sentMessage = await (client as any).sendMessageWithSource(message.from, responseMessage, 'agno');
+              } else {
+                // Fallback на обычный метод если новый не доступен
+                logger.warn('sendMessageWithSource not available for Agno, using fallback');
+                sentMessage = await client.sendMessage(message.from, responseMessage);
+                // Добавляем в исключения вручную
+                (client as any).addAgnoMessageId(sentMessage.id._serialized);
+              }
+            } catch (error) {
+              // Если новый метод не работает, используем старый
+              logger.warn('sendMessageWithSource failed for Agno, using fallback', {
+                error: error instanceof Error ? error.message : String(error),
+              });
+              sentMessage = await client.sendMessage(message.from, responseMessage);
+              (client as any).addAgnoMessageId(sentMessage.id._serialized);
+            }
 
             // Сохраняем ответ агента в БД как исходящее сообщение
             if (config.messageStorageService) {
@@ -415,20 +516,23 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
                 chat_id: message.from,
                 from_number: client.info?.wid?.user,
                 to_number: contact.number,
-                message_body: agnoResponse.message,
+                message_body: responseMessage,
                 message_type: 'text',
                 is_from_me: true, // Ответ агента = исходящее сообщение
                 is_group: isGroup,
                 group_id: isGroup ? message.from : undefined,
                 contact_name: contact.pushname || contact.name,
+                agent_id: agnoConfig.agentId, // Добавляем agent_id
+                message_source: 'agno', // Ответ от AI агента
                 timestamp: Date.now(),
               });
             }
 
             logger.debug('Agno response sent and saved', {
               agentId: agnoConfig.agentId,
-              responseLength: agnoResponse.message.length,
+              responseLength: responseMessage.length,
               messageId: sentMessage.id._serialized,
+              runId: agnoResponse.run_id,
             });
           }
         }
@@ -442,6 +546,48 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
   client.on('message_create', async (message: Message) => {
     // Only process messages sent by the user (fromMe = true)
     if (!message.fromMe) {
+      return;
+    }
+
+    // Быстрая проверка активных временных ID через счетчики
+    const hasActiveTempAgno = activeTempAgnoCount > 0;
+    const hasActiveTempApi = activeTempApiCount > 0;
+    
+    logger.debug('message_create handler triggered', {
+      messageId: message.id._serialized,
+      agnoSetSize: agnoMessageIds.size,
+      apiSetSize: apiMessageIds.size,
+      isInAgnoSet: agnoMessageIds.has(message.id._serialized),
+      isInApiSet: apiMessageIds.has(message.id._serialized),
+      activeTempAgnoCount,
+      activeTempApiCount,
+      hasActiveTempAgno,
+      hasActiveTempApi,
+    });
+
+    // Пропускаем сообщения уже сохраненные как ответы Agno
+    if (agnoMessageIds.has(message.id._serialized)) {
+      logger.debug('Skipping message already saved as Agno response', {
+        messageId: message.id._serialized,
+      });
+      return;
+    }
+
+    // Пропускаем сообщения уже сохраненные через API
+    if (apiMessageIds.has(message.id._serialized)) {
+      logger.debug('Skipping message already saved via API', {
+        messageId: message.id._serialized,
+      });
+      return;
+    }
+
+    // Пропускаем если есть активные временные ID (сообщение отправляется сейчас)
+    if (hasActiveTempAgno || hasActiveTempApi) {
+      logger.debug('Skipping message - temp ID active (Agno/API message being sent)', {
+        messageId: message.id._serialized,
+        hasActiveTempAgno,
+        hasActiveTempApi,
+      });
       return;
     }
 
@@ -464,19 +610,30 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
     if (config.messageStorageService && config.instanceId) {
       const isGroup = message.to.includes('@g.us');
 
+      // Получаем agent_id из конфигурации Agno
+      let agentId: string | undefined;
+      try {
+        const agnoConfig = await agnoIntegrationService.getAgnoConfig(config.instanceId);
+        agentId = agnoConfig?.agentId;
+      } catch (error) {
+        // Игнорируем ошибки получения agent_id
+      }
+
       try {
         await config.messageStorageService.saveMessage({
           instance_id: config.instanceId,
           message_id: message.id._serialized,
-          chat_id: message.to,
-          from_number: client.info?.wid?.user,
-          to_number: contact.number,
+          chat_id: message.from,
+          from_number: contact.number,
+          to_number: client.info?.wid?.user,
           message_body: message.body,
           message_type: message.type,
           is_from_me: true, // Исходящее сообщение
           is_group: isGroup,
-          group_id: isGroup ? message.to : undefined,
+          group_id: isGroup ? message.from : undefined,
           contact_name: contact.pushname || contact.name,
+          agent_id: agentId, // Добавляем agent_id
+          message_source: 'device', // Сообщение отправлено с устройства пользователя
           timestamp: message.timestamp,
         });
 
@@ -558,7 +715,113 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
     }
   });
 
+  // Добавляем методы для отслеживания сообщений
+  (client as any).addAgnoMessageId = (messageId: string) => {
+    agnoMessageIds.add(messageId);
+    logger.debug('Added message to agnoMessageIds set', {
+      messageId,
+      setSize: agnoMessageIds.size,
+    });
+  };
+  
+  (client as any).addApiMessageId = (messageId: string) => {
+    apiMessageIds.add(messageId);
+    logger.debug('Added message to apiMessageIds set', {
+      messageId,
+      setSize: apiMessageIds.size,
+    });
+  };
+
+  // Hook для перехвата sendMessage и предварительного добавления в исключения
+  const originalSendMessage = client.sendMessage.bind(client);
+  (client as any).sendMessageWithSource = async (chatId: string, content: any, source: 'agno' | 'api') => {
+    // Проверяем что оригинальный метод существует
+    if (typeof originalSendMessage !== 'function') {
+      throw new Error('Original sendMessage method not available');
+    }
+    
+    // Генерируем уникальный временный ID
+    const tempId = `temp_${source}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    if (source === 'agno') {
+      agnoMessageIds.add(tempId);
+      activeTempAgnoCount++;
+    } else if (source === 'api') {
+      apiMessageIds.add(tempId);
+      activeTempApiCount++;
+    }
+    
+    try {
+      // Используем оригинальный метод WhatsApp Web.js
+      const result = await originalSendMessage(chatId, content);
+      
+      // Проверяем что результат содержит ID
+      if (!result || !result.id || !result.id._serialized) {
+        throw new Error('Invalid message result from WhatsApp Web.js');
+      }
+      
+      // Заменяем временный ID на реальный
+      if (source === 'agno') {
+        agnoMessageIds.delete(tempId);
+        activeTempAgnoCount--;
+        agnoMessageIds.add(result.id._serialized);
+        logger.debug('Replaced temp agno ID with real ID', {
+          tempId,
+          realId: result.id._serialized,
+        });
+      } else if (source === 'api') {
+        apiMessageIds.delete(tempId);
+        activeTempApiCount--;
+        apiMessageIds.add(result.id._serialized);
+        logger.debug('Replaced temp api ID with real ID', {
+          tempId,
+          realId: result.id._serialized,
+        });
+      }
+      
+      return result;
+    } catch (error) {
+      // Убираем временный ID в случае ошибки
+      if (source === 'agno') {
+        agnoMessageIds.delete(tempId);
+        activeTempAgnoCount--;
+      } else if (source === 'api') {
+        apiMessageIds.delete(tempId);
+        activeTempApiCount--;
+      }
+      
+      logger.error('Error in sendMessageWithSource', {
+        source,
+        tempId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      
+      throw error;
+    }
+  };
+
   return client;
+}
+
+/**
+ * Генерирует детерминированный session_id из agent_id и chat_id
+ */
+function generateSessionId(agentId: string, chatId: string): string {
+  // Используем детерминированную генерацию UUID (такую же как в MessageStorageService)
+  const crypto = require('crypto');
+  const sessionString = `session:${agentId}:${chatId}`;
+  const hash = crypto.createHash('sha256').update(sessionString).digest('hex');
+  
+  // Форматируем как UUID v4
+  const uuid = [
+    hash.substr(0, 8),
+    hash.substr(8, 4),
+    '4' + hash.substr(13, 3), // версия 4
+    ((parseInt(hash.substr(16, 1), 16) & 0x3) | 0x8).toString(16) + hash.substr(17, 3), // вариант
+    hash.substr(20, 12)
+  ].join('-');
+  
+  return uuid;
 }
 
 /**

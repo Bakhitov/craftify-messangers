@@ -17,9 +17,9 @@ import {
   TelegramSendMessageParams,
   TelegramChannelResponse,
 } from '../types';
-import { MessageStorageService } from '../services/message-storage.service';
+import { MessageStorageService, MessageData } from '../services/message-storage.service';
 import { webhookService } from '../services/webhook.service';
-import { AgnoIntegrationService } from '../services/agno-integration.service';
+import { AgnoIntegrationService, AgnoMediaFile } from '../services/agno-integration.service';
 import * as mime from 'mime-types';
 import axios from 'axios';
 import logger from '../logger';
@@ -30,6 +30,7 @@ export class TelegramProvider extends BaseMessengerProvider {
   private isStarted = false;
   private isPollingStarted = false;
   private agnoIntegrationService: AgnoIntegrationService;
+  private botInfo: any = null;
 
   constructor(config: TelegramConfig, messageStorageService?: MessageStorageService) {
     super(config, messageStorageService);
@@ -80,27 +81,114 @@ export class TelegramProvider extends BaseMessengerProvider {
           try {
             const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
             if (agnoConfig?.enabled) {
-              // Отправляем сообщение агенту
-              const agnoResponse = await this.agnoIntegrationService.sendToAgent(
+              // Генерируем session_id детерминированно из agent_id + chat_id
+              const chatId = ctx.chat?.id.toString() || '';
+              const sessionId = this.generateSessionId(agnoConfig.agentId, chatId);
+              
+              // Обновляем конфигурацию с сгенерированным session_id
+              const configWithSession = {
+                ...agnoConfig,
+                sessionId: sessionId
+              };
+
+              // Получаем текст сообщения (включая описания медиа)
+              const messageText = messageResponse.body;
+
+              // Подготавливаем файлы для отправки в Agno если есть медиа
+              const agnoFiles: AgnoMediaFile[] = [];
+              let finalMessageText = messageText;
+
+              // Обрабатываем медиа файлы
+              if (ctx.message && 'photo' in ctx.message && ctx.message.photo) {
+                // Фотография
+                const photos = ctx.message.photo;
+                const photo = photos[photos.length - 1]; // Берем самое большое разрешение
+                try {
+                  const file = await ctx.api.getFile(photo.file_id);
+                  const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
+                  const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+                  
+                  const filename = `photo_${ctx.message.message_id}.jpg`;
+                  agnoFiles.push({
+                    buffer: Buffer.from(response.data),
+                    filename,
+                    mimetype: 'image/jpeg',
+                  });
+
+                  finalMessageText = ctx.message.caption ? 
+                    `${ctx.message.caption}\n\n[PHOTO: ${filename}]` : 
+                    `[PHOTO: ${filename}]`;
+                } catch (error) {
+                  this.logError('Failed to download Telegram photo for Agno', error);
+                }
+              } else if (ctx.message && 'document' in ctx.message && ctx.message.document) {
+                // Документ
+                const document = ctx.message.document;
+                try {
+                  const file = await ctx.api.getFile(document.file_id);
+                  const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
+                  const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+                  
+                  const filename = document.file_name || `document_${ctx.message.message_id}`;
+                  agnoFiles.push({
+                    buffer: Buffer.from(response.data),
+                    filename,
+                    mimetype: document.mime_type || 'application/octet-stream',
+                  });
+
+                  finalMessageText = ctx.message.caption ? 
+                    `${ctx.message.caption}\n\n[DOCUMENT: ${filename}]` : 
+                    `[DOCUMENT: ${filename}]`;
+                } catch (error) {
+                  this.logError('Failed to download Telegram document for Agno', error);
+                }
+              } else if (ctx.message && 'video' in ctx.message && ctx.message.video) {
+                // Видео
+                const video = ctx.message.video;
+                try {
+                  const file = await ctx.api.getFile(video.file_id);
+                  const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
+                  const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+                  
+                  const filename = `video_${ctx.message.message_id}.mp4`;
+                  agnoFiles.push({
+                    buffer: Buffer.from(response.data),
+                    filename,
+                    mimetype: video.mime_type || 'video/mp4',
+                  });
+
+                  finalMessageText = ctx.message.caption ? 
+                    `${ctx.message.caption}\n\n[VIDEO: ${filename}]` : 
+                    `[VIDEO: ${filename}]`;
+                } catch (error) {
+                  this.logError('Failed to download Telegram video for Agno', error);
+                }
+              }
+
+              // Отправляем сообщение агенту (с файлами если есть)
+              const agnoResponse = await this.agnoIntegrationService.sendToAgentWithFiles(
                 agnoConfig.agentId,
-                ctx.message?.text || '',
-                agnoConfig, // Передаем полную конфигурацию
+                finalMessageText,
+                configWithSession,
+                agnoFiles,
               );
 
               // Если получили ответ от агента
-              if (agnoResponse?.message) {
+              const responseMessage = agnoResponse?.content || agnoResponse?.message;
+              if (responseMessage) {
                 // Отправляем ответ пользователю
-                const sentMessage = await ctx.reply(agnoResponse.message);
+                const sentMessage = await ctx.reply(responseMessage);
 
                 // Сохраняем ответ агента в БД как исходящее сообщение
                 if (this.messageStorageService) {
+                  const botName = this.getBotName();
                   await this.messageStorageService.saveMessage({
                     instance_id: this.instanceId,
                     message_id: sentMessage.message_id.toString(),
                     chat_id: ctx.chat?.id.toString() || '',
-                    from_number: undefined, // От бота
-                    to_number: ctx.from?.id.toString(),
-                    message_body: agnoResponse.message,
+                    from_number: botName, // От бота
+                    to_number: ctx.chat?.id.toString() || '',
+                    message_body: responseMessage,
                     message_type: 'text',
                     is_from_me: true, // Ответ агента = исходящее сообщение
                     is_group: ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup',
@@ -109,20 +197,64 @@ export class TelegramProvider extends BaseMessengerProvider {
                         ? ctx.chat.id.toString()
                         : undefined,
                     contact_name: this.getFullContactName(ctx.from),
+                    agent_id: agnoConfig.agentId, // Добавляем agent_id
+                    message_source: 'agno', // Ответ от AI агента
                     timestamp: Date.now(),
                   });
                 }
 
                 this.logDebug('Agno response sent and saved', {
                   agentId: agnoConfig.agentId,
-                  responseLength: agnoResponse.message.length,
+                  responseLength: responseMessage.length,
                   messageId: sentMessage.message_id,
+                  runId: agnoResponse.run_id,
                 });
               }
             }
           } catch (error) {
             this.logError('Agno integration failed', error);
           }
+        }
+
+        // Получаем agent_id из конфигурации Agno
+        let agentId: string | undefined;
+        try {
+          if (this.instanceId) {
+            const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
+            agentId = agnoConfig?.agentId;
+          }
+        } catch (error) {
+          // Игнорируем ошибки получения agent_id
+        }
+
+        // Сохранить входящее сообщение в БД
+        if (this.messageStorageService && this.instanceId && ctx.message) {
+          await this.messageStorageService.saveMessage({
+            instance_id: this.instanceId,
+            message_id: ctx.message.message_id.toString(),
+            chat_id: ctx.chat?.id.toString() || '',
+            from_number: ctx.from?.id.toString(),
+            to_number: this.getBotName(), // К боту
+            message_body: messageResponse.body, // Используем обработанный текст включая медиа
+            message_type: messageResponse.type || 'text', // Правильный тип сообщения
+            is_from_me: false, // Входящее сообщение
+            is_group: ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup',
+            group_id:
+              ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
+                ? ctx.chat.id.toString()
+                : undefined,
+            contact_name: this.getFullContactName(ctx.from),
+            agent_id: agentId, // Добавляем agent_id если есть
+            message_source: 'user', // Входящее сообщение всегда от пользователя
+            timestamp: Date.now(),
+          });
+
+          this.logDebug('Incoming Telegram message saved', {
+            messageId: ctx.message.message_id,
+            chatId: ctx.chat?.id,
+            instanceId: this.instanceId,
+            messageType: messageResponse.type,
+          });
         }
 
         this.emitEvent('message', { message: messageResponse });
@@ -154,6 +286,7 @@ export class TelegramProvider extends BaseMessengerProvider {
 
       // Ждем либо успешную инициализацию, либо таймаут
       const me = (await Promise.race([initPromise, timeoutPromise])) as any;
+      this.botInfo = me; // Сохраняем информацию о боте
       this.logInfo(`Bot initialized: @${me.username} (${me.first_name})`);
 
       // Обновляем поле account в БД с информацией о боте
@@ -280,17 +413,20 @@ export class TelegramProvider extends BaseMessengerProvider {
 
       // Сохранить исходящее сообщение в БД
       if (this.messageStorageService && this.instanceId) {
+        const botName = this.getBotName();
         await this.messageStorageService.saveMessage({
           instance_id: this.instanceId,
           message_id: result.message_id.toString(),
           chat_id: to,
-          from_number: undefined, // От бота
+          from_number: botName, // От бота
           to_number: to,
           message_body: message,
           message_type: 'text',
+          is_from_me: true,
           is_group: to.startsWith('-'),
           group_id: to.startsWith('-') ? to : undefined,
           contact_name: await this.getContactName(to),
+          message_source: 'api', // Сообщение отправлено через API
           timestamp: Date.now(),
         });
 
@@ -332,13 +468,14 @@ export class TelegramProvider extends BaseMessengerProvider {
           instance_id: this.instanceId,
           message_id: result.message_id.toString(),
           chat_id: params.chatId.toString(),
-          from_number: undefined, // От бота
+          from_number: this.getBotName(), // От бота
           to_number: params.chatId.toString(),
           message_body: params.message,
           message_type: 'text',
           is_group: params.chatId.toString().startsWith('-'),
           group_id: params.chatId.toString().startsWith('-') ? params.chatId.toString() : undefined,
           contact_name: await this.getContactName(params.chatId.toString()),
+          message_source: 'api', // Сообщение отправлено через API
           timestamp: Date.now(),
         });
 
@@ -690,6 +827,74 @@ export class TelegramProvider extends BaseMessengerProvider {
   }
 
   /**
+   * Переопределенный метод для сохранения телеграм сообщений с правильными полями
+   */
+  protected async storeMessage(message: MessageResponse): Promise<void> {
+    if (!this.messageStorageService || !this.instanceId) {
+      return;
+    }
+
+    try {
+      const botName = this.getBotName();
+      
+      // Получаем agent_id из конфигурации Agno
+      let agentId: string | undefined;
+      try {
+        if (this.instanceId) {
+          const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
+          agentId = agnoConfig?.agentId;
+        }
+      } catch (error) {
+        this.logDebug('Could not get Agno config for storing message', { error });
+      }
+      
+      const messageData: MessageData = {
+        instance_id: this.instanceId,
+        message_id: message.id,
+        chat_id: message.chatId || '',
+        // Для телеграм: записываем chat_id пользователя в from_number, имя бота в to_number
+        from_number: message.fromMe ? botName : message.chatId || '',
+        to_number: message.fromMe ? message.chatId || '' : botName,
+        message_body: message.body,
+        message_type: message.type || 'text',
+        is_from_me: message.fromMe,
+        is_group: message.chatId?.startsWith('-') || false,
+        group_id: message.chatId?.startsWith('-') ? message.chatId : undefined,
+        contact_name: message.contact,
+        agent_id: agentId, // Добавляем agent_id
+        // Правильная логика для message_source:
+        // - Входящие (fromMe: false) = всегда 'user'
+        // - Исходящие (fromMe: true) = если есть agent_id то 'agno', иначе 'api'
+        message_source: message.fromMe 
+          ? (agentId ? 'agno' : 'api') 
+          : 'user',
+        timestamp: new Date(message.timestamp).getTime(),
+      };
+
+      await this.messageStorageService.saveMessage(messageData);
+    } catch (error) {
+      this.logError(`Failed to store message for Telegram provider:`, error);
+    }
+  }
+
+  /**
+   * Получает имя бота для записи в поля from_number/to_number
+   */
+  private getBotName(): string {
+    if (!this.botInfo) return 'TelegramBot';
+    
+    let name = '';
+    if (this.botInfo.first_name) {
+      name += this.botInfo.first_name;
+    }
+    if (this.botInfo.username) {
+      name += ` (@${this.botInfo.username})`;
+    }
+    
+    return name.trim() || 'TelegramBot';
+  }
+
+  /**
    * Обновляет поле account в БД с информацией о боте
    */
   private async updateAccountInfo(accountInfo: string): Promise<void> {
@@ -717,5 +922,40 @@ export class TelegramProvider extends BaseMessengerProvider {
         account: accountInfo,
       });
     }
+  }
+
+  /**
+   * Переопределяем метод getAgentId для получения agent_id из Agno конфигурации
+   */
+  protected async getAgentId(): Promise<string | undefined> {
+    if (!this.instanceId) {
+      return undefined;
+    }
+
+    try {
+      const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
+      return agnoConfig?.agentId;
+    } catch (error) {
+      this.logDebug('Could not get Agno config for agent_id', { error });
+      return undefined;
+    }
+  }
+
+  private generateSessionId(agentId: string, chatId: string): string {
+    // Используем детерминированную генерацию UUID (такую же как в MessageStorageService)
+    const crypto = require('crypto');
+    const sessionString = `session:${agentId}:${chatId}`;
+    const hash = crypto.createHash('sha256').update(sessionString).digest('hex');
+    
+    // Форматируем как UUID v4
+    const uuid = [
+      hash.substr(0, 8),
+      hash.substr(8, 4),
+      '4' + hash.substr(13, 3), // версия 4
+      ((parseInt(hash.substr(16, 1), 16) & 0x3) | 0x8).toString(16) + hash.substr(17, 3), // вариант
+      hash.substr(20, 12)
+    ].join('-');
+    
+    return uuid;
   }
 }

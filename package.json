@@ -77,6 +77,7 @@
   "devDependencies": {
     "@types/cors": "^2.8.18",
     "@types/dockerode": "^3.3.39",
+    "@types/form-data": "^2.2.1",
     "@types/jest": "^29.5.14",
     "@types/mime-types": "^2.1.4",
     "@types/pg": "^8.15.4",
@@ -95,7 +96,7 @@
     "supertest": "^6.3.4",
     "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.2",
+    "typescript": "^5.8.3",
     "typescript-eslint": "^8.33.0",
     "zod": "^3.25.47"
   },

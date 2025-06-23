@@ -81,6 +81,9 @@ export const CREATE_MESSAGES_TABLE_SQL = `
     is_group BOOLEAN DEFAULT FALSE,
     group_id VARCHAR(255),
     contact_name VARCHAR(255),
+    agent_id TEXT,
+    session_id UUID,
+    message_source VARCHAR(20) DEFAULT 'user',
     timestamp BIGINT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -93,4 +96,9 @@ export const CREATE_MESSAGES_TABLE_SQL = `
   CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON ai.messages(timestamp);
   CREATE INDEX IF NOT EXISTS idx_messages_from_number ON ai.messages(from_number);
   CREATE INDEX IF NOT EXISTS idx_messages_is_group ON ai.messages(is_group);
+  CREATE INDEX IF NOT EXISTS idx_messages_agent_id ON ai.messages(agent_id);
+  CREATE INDEX IF NOT EXISTS idx_messages_session_id ON ai.messages(session_id);
+  CREATE INDEX IF NOT EXISTS idx_messages_message_source ON ai.messages(message_source);
+
+  COMMENT ON COLUMN ai.messages.message_source IS 'Источник сообщения: user (от пользователя), agno (ответ агента), api (через API), device (с устройства WhatsApp)';
 `;

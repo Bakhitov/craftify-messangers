@@ -295,7 +295,7 @@ export class InstanceManagerClient {
   }
 
   /**
-   * Получает текущий API ключ инстанса
+   * Получает API ключ инстанса (всегда равен instanceId)
    *
    * @param instanceId - ID инстанса
    * @returns API ключ
@@ -303,7 +303,7 @@ export class InstanceManagerClient {
   async getInstanceApiKey(instanceId: string): Promise<string> {
     try {
       const response: AxiosResponse<ApiKeyResponse> = await this.axios.get(
-        `/api/v1/instances/${instanceId}/current-api-key`,
+        `/api/v1/instances/${instanceId}/api-key`,
       );
 
       if (!response.data.success) {

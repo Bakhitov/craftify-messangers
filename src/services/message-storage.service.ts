@@ -13,7 +13,10 @@ export interface MessageData {
   is_group: boolean;
   group_id?: string;
   contact_name?: string;
+  agent_id?: string;
+  session_id?: string;
   timestamp: number;
+  message_source?: string;
 }
 
 export interface StoredMessage extends MessageData {
@@ -32,23 +35,55 @@ export class MessageStorageService {
   }
 
   /**
+   * Генерирует session_id из agent_id и chat_id, или только из chat_id если agent_id отсутствует
+   */
+  private generateSessionId(agentId?: string, chatId?: string): string | undefined {
+    if (!chatId) {
+      return undefined;
+    }
+    
+    // Используем детерминированную генерацию UUID
+    const crypto = require('crypto');
+    const sessionString = agentId ? `session:${agentId}:${chatId}` : `session:${chatId}`;
+    const hash = crypto.createHash('sha256').update(sessionString).digest('hex');
+    
+    // Форматируем как UUID v4
+    const uuid = [
+      hash.substr(0, 8),
+      hash.substr(8, 4),
+      '4' + hash.substr(13, 3), // версия 4
+      ((parseInt(hash.substr(16, 1), 16) & 0x3) | 0x8).toString(16) + hash.substr(17, 3), // вариант
+      hash.substr(20, 12)
+    ].join('-');
+    
+    return uuid;
+  }
+
+  /**
    * Сохраняет сообщение в базу данных
    */
   async saveMessage(messageData: MessageData): Promise<StoredMessage | null> {
     try {
+      // Автоматически генерируем session_id если не передан
+      // Используем agent_id + chat_id если agent_id доступен, иначе только chat_id
+      const sessionId = messageData.session_id || this.generateSessionId(messageData.agent_id, messageData.chat_id);
+
       const query = `
         INSERT INTO ${this.schema}.messages (
           instance_id, message_id, chat_id, from_number, to_number,
           message_body, message_type, is_from_me, is_group, group_id,
-          contact_name, timestamp, created_at, updated_at
+          contact_name, agent_id, session_id, message_source, timestamp, created_at, updated_at
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW()
         )
         ON CONFLICT (instance_id, message_id) 
         DO UPDATE SET
           message_body = EXCLUDED.message_body,
           contact_name = EXCLUDED.contact_name,
           is_from_me = EXCLUDED.is_from_me,
+          agent_id = EXCLUDED.agent_id,
+          session_id = EXCLUDED.session_id,
+          message_source = EXCLUDED.message_source,
           updated_at = NOW()
         RETURNING *
       `;
@@ -65,6 +100,9 @@ export class MessageStorageService {
         messageData.is_group,
         messageData.group_id,
         messageData.contact_name,
+        messageData.agent_id,
+        sessionId,
+        messageData.message_source || 'user',
         messageData.timestamp,
       ];
 

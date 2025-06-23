@@ -73,31 +73,31 @@ export const CREATE_SCHEMA_SQL = `
 
 export const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS ai.message_instances (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id VARCHAR(255),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    user_id VARCHAR(255) NULL,
     provider VARCHAR NOT NULL DEFAULT 'whatsappweb',
     type_instance VARCHAR[] NOT NULL DEFAULT ARRAY['api'],
-    port_api INTEGER,
-    port_mcp INTEGER,
-    api_key VARCHAR,
-    current_api_key VARCHAR,
-    api_key_generated_at TIMESTAMP,
-    last_qr_generated_at TIMESTAMP,
-    api_webhook_schema JSONB DEFAULT '{}',
-    mcp_schema JSONB DEFAULT '{}',
-    agent_id VARCHAR(255),
-    agno_enable BOOLEAN DEFAULT TRUE,
-    stream BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    auth_status VARCHAR(50) DEFAULT 'pending',
-    account TEXT,
-    whatsapp_state TEXT,
-    token TEXT
-  );
+    port_api INTEGER NULL,
+    port_mcp INTEGER NULL,
+    api_key VARCHAR NULL,
+    api_key_generated_at TIMESTAMP WITHOUT TIME ZONE NULL,
+    last_qr_generated_at TIMESTAMP WITHOUT TIME ZONE NULL,
+    api_webhook_schema JSONB NULL DEFAULT '{}'::jsonb,
+    mcp_schema JSONB NULL DEFAULT '{}'::jsonb,
+    agent_id TEXT NULL,
+    agno_enable BOOLEAN NULL DEFAULT true,
+    stream BOOLEAN NULL DEFAULT false,
+    created_at TIMESTAMP WITHOUT TIME ZONE NULL DEFAULT now(),
+    updated_at TIMESTAMP WITHOUT TIME ZONE NULL DEFAULT now(),
+    auth_status VARCHAR(50) NULL DEFAULT 'pending',
+    account TEXT NULL,
+    whatsapp_state TEXT NULL,
+    token TEXT NULL,
+    CONSTRAINT message_instances_pkey PRIMARY KEY (id)
+  ) TABLESPACE pg_default;
 
-  CREATE INDEX IF NOT EXISTS idx_message_instances_user_id ON ai.message_instances(user_id);
-  CREATE INDEX IF NOT EXISTS idx_message_instances_provider ON ai.message_instances(provider);
-  CREATE INDEX IF NOT EXISTS idx_message_instances_agent_id ON ai.message_instances(agent_id);
-  CREATE INDEX IF NOT EXISTS idx_message_instances_auth_status ON ai.message_instances(auth_status);
+  CREATE INDEX IF NOT EXISTS idx_message_instances_user_id ON ai.message_instances USING btree (user_id) TABLESPACE pg_default;
+  CREATE INDEX IF NOT EXISTS idx_message_instances_provider ON ai.message_instances USING btree (provider) TABLESPACE pg_default;
+  CREATE INDEX IF NOT EXISTS idx_message_instances_auth_status ON ai.message_instances USING btree (auth_status) TABLESPACE pg_default;
+  CREATE INDEX IF NOT EXISTS idx_message_instances_agent_id ON ai.message_instances USING btree (agent_id) TABLESPACE pg_default;
 `;

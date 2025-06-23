@@ -1,29 +1,45 @@
 import axios, { AxiosResponse } from 'axios';
 import { Pool } from 'pg';
 import logger from '../logger';
+const FormData = require('form-data');
 
 export interface AgnoConfig {
   agentId: string;
   enabled: boolean;
   stream: boolean;
   userId?: string;
+  sessionId?: string;
 }
 
 export interface AgnoResponse {
+  content?: string;
   message?: string;
   response?: string;
   status?: string;
-  metadata?: {
-    agent_id?: string;
-    run_id?: string;
+  run_id?: string;
+  agent_id?: string;
+  session_id?: string;
+  metrics?: {
+    input_tokens?: number[];
+    output_tokens?: number[];
+    total_tokens?: number[];
+    time?: number[];
   };
 }
 
 export interface AgnoApiRequest {
   message: string;
   stream: boolean;
+  monitor: boolean;
   user_id?: string;
   session_id?: string;
+  files?: Buffer[];
+}
+
+export interface AgnoMediaFile {
+  buffer: Buffer;
+  filename: string;
+  mimetype: string;
 }
 
 export interface AgnoEnvironmentConfig {
@@ -83,6 +99,7 @@ export class AgnoIntegrationService {
         enabled: row.agno_enable,
         stream: row.stream,
         userId: row.user_id,
+        sessionId: undefined, // session_id будет устанавливаться в провайдерах
       };
 
       logger.debug('Agno config loaded from database', {
@@ -91,6 +108,7 @@ export class AgnoIntegrationService {
         enabled: config.enabled,
         stream: config.stream,
         userId: config.userId,
+        sessionId: 'will be set by provider', // Указываем что будет установлен провайдером
       });
 
       return config;
@@ -111,6 +129,18 @@ export class AgnoIntegrationService {
     message: string,
     config: AgnoConfig,
   ): Promise<AgnoResponse | null> {
+    return this.sendToAgentWithFiles(agentId, message, config, []);
+  }
+
+  /**
+   * Отправляет сообщение с файлами в агентную систему и возвращает ответ
+   */
+  async sendToAgentWithFiles(
+    agentId: string,
+    message: string,
+    config: AgnoConfig,
+    files: AgnoMediaFile[] = [],
+  ): Promise<AgnoResponse | null> {
     try {
       if (!this.config.enabled) {
         logger.debug('Agno integration globally disabled, skipping agent request');
@@ -122,28 +152,49 @@ export class AgnoIntegrationService {
         return null;
       }
 
-      const url = `${this.config.baseUrl}/v1/agents/${agentId}/runs`;
-      const payload: AgnoApiRequest = {
-        message: message.trim(),
-        stream: config.stream,
-        user_id: config.userId,
-        session_id: config.userId, // Используем user_id как session_id
-      };
+      // Новый URL для playground API
+      const url = `${this.config.baseUrl}/v1/playground/agents/${agentId}/runs`;
+
+      // Создаем FormData для multipart/form-data запроса
+      const formData = new FormData();
+      formData.append('message', message.trim());
+      formData.append('stream', config.stream.toString());
+      formData.append('monitor', 'false');
+      
+      if (config.userId) {
+        formData.append('user_id', config.userId);
+      }
+      
+      if (config.sessionId) {
+        formData.append('session_id', config.sessionId);
+      }
+
+      // Добавляем файлы если они есть
+      if (files && files.length > 0) {
+        for (const file of files) {
+          formData.append('files', file.buffer, {
+            filename: file.filename,
+            contentType: file.mimetype,
+          });
+        }
+      }
 
       logger.debug('Sending message to agno agent', {
         agentId,
         url,
         messageLength: message.length,
+        filesCount: files.length,
         stream: config.stream,
         userId: config.userId,
+        sessionId: config.sessionId,
       });
 
-      const response = await axios.post(url, payload, {
+      const response = await axios.post(url, formData, {
         headers: {
-          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          ...formData.getHeaders(),
         },
         timeout: this.config.timeout,
-        responseType: 'text', // Получаем ответ как текст для обработки всех форматов
       });
 
       if (response.status < 200 || response.status >= 300) {
@@ -159,57 +210,29 @@ export class AgnoIntegrationService {
         agentId,
         status: response.status,
         contentType: response.headers['content-type'],
-        dataLength: response.data?.length || 0,
+        dataLength: JSON.stringify(response.data)?.length || 0,
+        filesCount: files.length,
         stream: config.stream,
       });
 
-      // Парсим ответ в зависимости от режима stream и Content-Type
-      let agnoResponse: any = null;
-      const contentType = response.headers['content-type'] || '';
-
-      if (config.stream && contentType.includes('text/event-stream')) {
-        // Обрабатываем SSE формат для stream=true
-        const responseText = response.data as string;
-        logger.debug('Processing SSE response (stream=true)', { responseText });
-
-        agnoResponse = {
-          message: responseText.trim(),
-          status: 'completed',
-        };
-      } else if (!config.stream && contentType.includes('application/json')) {
-        // Обрабатываем JSON ответ для stream=false
-        logger.debug('Processing JSON response (stream=false)');
-        try {
-          // Ответ уже в виде строки JSON, парсим его
-          const jsonData = JSON.parse(response.data);
-          agnoResponse = {
-            message: jsonData, // Сам JSON уже содержит строку ответа
-            status: 'completed',
-          };
-        } catch (parseError) {
-          // Если не удалось распарсить как JSON, используем как обычный текст
-          agnoResponse = {
-            message: response.data.toString().trim(),
-            status: 'completed',
-          };
-        }
-      } else {
-        // Обрабатываем как обычный текст (fallback)
-        agnoResponse = {
-          message: response.data.toString().trim(),
-          status: 'completed',
-        };
+      // Обрабатываем новый формат ответа
+      const responseData = response.data;
+      
+      if (!responseData || typeof responseData !== 'object') {
+        logger.warn('Agno API returned invalid response format', {
+          agentId,
+          response: responseData,
+        });
+        return null;
       }
 
-      // Поддерживаем оба формата: message и response
-      const responseMessage = agnoResponse?.message || agnoResponse?.response;
+      // Извлекаем сообщение из нового формата
+      const responseMessage = responseData.content || responseData.message || responseData.response;
 
-      if (!agnoResponse || !responseMessage || responseMessage.trim().length === 0) {
-        logger.warn('Agno API returned empty response', {
+      if (!responseMessage || responseMessage.trim().length === 0) {
+        logger.warn('Agno API returned empty response content', {
           agentId,
-          response: agnoResponse,
-          contentType,
-          stream: config.stream,
+          response: responseData,
         });
         return null;
       }
@@ -217,26 +240,34 @@ export class AgnoIntegrationService {
       logger.debug('Received response from agno agent', {
         agentId,
         responseLength: responseMessage.length,
-        status: agnoResponse.status,
-        runId: agnoResponse.metadata?.run_id,
+        runId: responseData.run_id,
+        sessionId: responseData.session_id,
+        metrics: responseData.metrics,
+        filesCount: files.length,
         stream: config.stream,
       });
 
-      // Возвращаем стандартизированный ответ с полем message
+      // Возвращаем стандартизированный ответ
       return {
-        ...agnoResponse,
-        message: responseMessage,
+        content: responseMessage,
+        message: responseMessage, // Для обратной совместимости
+        status: responseData.status || 'completed',
+        run_id: responseData.run_id,
+        agent_id: responseData.agent_id,
+        session_id: responseData.session_id,
+        metrics: responseData.metrics,
       };
     } catch (error) {
       if (axios.isAxiosError(error)) {
         logger.error('Agno API request failed', {
           agentId,
-          url: `${this.config.baseUrl}/v1/agents/${agentId}/runs`,
+          url: `${this.config.baseUrl}/v1/playground/agents/${agentId}/runs`,
           status: error.response?.status,
           statusText: error.response?.statusText,
           message: error.message,
           timeout: error.code === 'ECONNABORTED',
           responseData: error.response?.data,
+          filesCount: files.length,
           stream: config.stream,
         });
       } else {

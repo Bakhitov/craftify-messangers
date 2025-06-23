@@ -95,6 +95,16 @@ export class DockerComposeGenerator {
           AGNO_API_BASE_URL: process.env.AGNO_API_BASE_URL || 'http://host.docker.internal:8000',
           AGNO_API_TIMEOUT: process.env.AGNO_API_TIMEOUT || '10000',
           AGNO_ENABLED: process.env.AGNO_ENABLED || 'true',
+          // Переменные для Supabase
+          DATABASE_URL: process.env.DATABASE_URL,
+          DATABASE_HOST: process.env.DATABASE_HOST,
+          DATABASE_PORT: process.env.DATABASE_PORT,
+          DATABASE_NAME: process.env.DATABASE_NAME,
+          DATABASE_USER: process.env.DATABASE_USER,
+          DATABASE_PASSWORD: process.env.DATABASE_PASSWORD,
+          DATABASE_SCHEMA: process.env.DATABASE_SCHEMA || 'ai',
+          DATABASE_SSL: process.env.DATABASE_SSL || 'true',
+          USE_SUPABASE: process.env.USE_SUPABASE || 'true',
         },
       };
 
@@ -191,6 +201,18 @@ export class DockerComposeGenerator {
             'max-file': '4',
           },
         },
+        deploy: {
+          resources: {
+            limits: {
+              memory: '512M',
+              cpus: '0.5',
+            },
+            reservations: {
+              memory: '128M',
+              cpus: '0.1',
+            },
+          },
+        },
         labels: NamingUtils.getDockerLabels(
           instance.id,
           instance.user_id,
@@ -199,6 +221,28 @@ export class DockerComposeGenerator {
         ),
         environment: {
           DOCKER_CONTAINER: 'true',
+          INSTANCE_ID: instance.id,
+          // Добавляем переменные для подключения к базе данных из переменных окружения
+          DB_HOST: process.env.DATABASE_HOST || process.env.DB_HOST || 'host.docker.internal',
+          DB_PORT: process.env.DATABASE_PORT || process.env.DB_PORT || '5432',
+          DB_NAME: process.env.DATABASE_NAME || process.env.DB_NAME || 'postgres',
+          DB_USER: process.env.DATABASE_USER || process.env.DB_USER || 'postgres',
+          DB_PASSWORD: process.env.DATABASE_PASSWORD || process.env.DB_PASSWORD || 'password',
+          DB_SCHEMA: process.env.DATABASE_SCHEMA || process.env.DB_SCHEMA || 'ai',
+          // Добавляем переменные для агентной системы (Agno)
+          AGNO_API_BASE_URL: process.env.AGNO_API_BASE_URL || 'http://host.docker.internal:8000',
+          AGNO_API_TIMEOUT: process.env.AGNO_API_TIMEOUT || '10000',
+          AGNO_ENABLED: process.env.AGNO_ENABLED || 'true',
+          // Переменные для Supabase
+          DATABASE_URL: process.env.DATABASE_URL,
+          DATABASE_HOST: process.env.DATABASE_HOST,
+          DATABASE_PORT: process.env.DATABASE_PORT,
+          DATABASE_NAME: process.env.DATABASE_NAME,
+          DATABASE_USER: process.env.DATABASE_USER,
+          DATABASE_PASSWORD: process.env.DATABASE_PASSWORD,
+          DATABASE_SCHEMA: process.env.DATABASE_SCHEMA || 'ai',
+          DATABASE_SSL: process.env.DATABASE_SSL || 'true',
+          USE_SUPABASE: process.env.USE_SUPABASE || 'true',
         },
       };
 

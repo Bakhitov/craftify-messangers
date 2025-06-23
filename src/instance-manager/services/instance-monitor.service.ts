@@ -32,7 +32,7 @@ export class InstanceMonitorService {
     });
 
     if (!instance.port_api) {
-      instanceMemoryService.updateStatus(instance.id, 'failed', {
+      instanceMemoryService.updateStatus(instance.id, 'error', {
         source: 'instance-monitor.service.ts:getAuthStatus',
         message: 'No API port configured',
       });
@@ -46,7 +46,7 @@ export class InstanceMonitorService {
       // Проверяем статус контейнеров
       const dockerStatus = await this.dockerService.getComposeStatus(instance.id);
       if (!dockerStatus.running) {
-        instanceMemoryService.updateStatus(instance.id, 'failed', {
+        instanceMemoryService.updateStatus(instance.id, 'error', {
           source: 'instance-monitor.service.ts:getAuthStatus',
           message: 'Docker containers not running',
         });
@@ -69,7 +69,7 @@ export class InstanceMonitorService {
       }
 
       // Обновляем статус - API ключ готов
-      instanceMemoryService.updateStatus(instance.id, 'api_key_ready', {
+      instanceMemoryService.updateStatus(instance.id, 'start', {
         source: 'instance-monitor.service.ts:getAuthStatus',
         message: `API key available, checking ${instance.provider} status`,
       });
@@ -157,7 +157,7 @@ export class InstanceMonitorService {
           providerState = data.state || 'QR_READY';
           // Сохраняем QR код в память
           instanceMemoryService.saveQRCode(instance.id, data.qr, {
-            qrText: data.qrText,
+            text: data.qrText,
             source: 'instance-monitor.service.ts:getAuthStatus',
           });
         } else {
@@ -209,8 +209,8 @@ export class InstanceMonitorService {
     const memoryQR = instanceMemoryService.getCurrentQR(instance.id);
     if (memoryQR && memoryQR.expires_at > new Date()) {
       return {
-        qr_code: memoryQR.code,
-        qr_code_text: memoryQR.text,
+        qr_code: memoryQR.qr_code,
+        qr_code_text: memoryQR.qr_text,
         auth_status: 'qr_ready',
         expires_in: Math.floor((memoryQR.expires_at.getTime() - Date.now()) / 1000),
       };
@@ -235,7 +235,7 @@ export class InstanceMonitorService {
       if (data.qr) {
         // Сохраняем QR код в память
         instanceMemoryService.saveQRCode(instance.id, data.qr, {
-          qrText: data.qrText,
+          text: data.qrText,
           source: 'instance-monitor.service.ts:getQRCode',
         });
 
@@ -312,7 +312,7 @@ export class InstanceMonitorService {
 
           // Сохраняем QR код в память
           instanceMemoryService.saveQRCode(instance.id, qrCodeText, {
-            qrText: qrCodeText,
+            text: qrCodeText,
             source: 'instance-monitor.service.ts:getQRCode:logs',
           });
 

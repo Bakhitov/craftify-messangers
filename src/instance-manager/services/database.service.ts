@@ -19,11 +19,9 @@ export class DatabaseService {
         logger.info(`Saving API key to database for instance ${instanceId}`);
         await this.updateInstance(instanceId, {
           api_key: apiKey,
-          current_api_key: apiKey,
           api_key_generated_at: new Date(),
           updated_at: new Date(),
         });
-        instanceMemoryService.markApiKeySavedToDb(instanceId);
         logger.info(`API key saved to database for instance ${instanceId}`);
       } catch (error) {
         logger.error(`Failed to save API key to database for instance ${instanceId}`, error);

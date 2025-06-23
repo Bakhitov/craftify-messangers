@@ -423,8 +423,8 @@ instancesRouter.get('/:id/current-qr', async (req: Request, res: Response): Prom
   }
 });
 
-// GET /api/v1/instances/:id/current-api-key - Получить текущий API ключ
-instancesRouter.get('/:id/current-api-key', async (req: Request, res: Response): Promise<void> => {
+// GET /api/v1/instances/:id/api-key - Получить API ключ (всегда равен instanceId)
+instancesRouter.get('/:id/api-key', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
 
@@ -438,44 +438,20 @@ instancesRouter.get('/:id/current-api-key', async (req: Request, res: Response):
       return;
     }
 
-    // 1. Сначала проверяем память
-    let currentApiKey = instanceMemoryService.getCurrentApiKey(id);
-    let source = 'memory';
-
-    // 2. Если в памяти нет, проверяем DB
-    if (!currentApiKey) {
-      currentApiKey = instance.current_api_key || instance.api_key || null;
-      source = 'database';
-
-      // 3. Если нашли в DB, сохраняем в память для синхронизации
-      if (currentApiKey) {
-        instanceMemoryService.saveApiKey(id, currentApiKey, {
-          source: 'API:getCurrentApiKey:sync_from_db',
-          saveToDb: false, // Уже в DB
-        });
-        source = 'database_synced_to_memory';
-      }
-    }
-
-    if (!currentApiKey) {
-      res.status(404).json({
-        success: false,
-        error: 'API key not available',
-        message: 'No API key generated for this instance',
-      });
-      return;
-    }
+    // API ключ всегда равен instanceId
+    const apiKey = id;
 
     res.json({
       success: true,
       data: {
-        api_key: currentApiKey,
-        generated_at: instance.api_key_generated_at,
-        source: source,
+        api_key: apiKey,
+        generated_at: instance.api_key_generated_at || instance.created_at,
+        usage_count: instanceMemoryService.getInstance(id)?.api_key_usage_count || 0,
+        last_use: instanceMemoryService.getInstance(id)?.api_key_last_use,
       },
     });
   } catch (error: any) {
-    logger.error('Failed to get current API key', error);
+    logger.error('Failed to get API key', error);
     res.status(500).json({
       success: false,
       error: error.message,

@@ -5,9 +5,8 @@ export interface MessageInstance {
   type_instance: string[]; // ['api'] или ['mcp'] или ['api', 'mcp']
   port_api?: number; // Назначается при создании
   port_mcp?: number; // Назначается при создании
-  api_key?: string; // Генерируется после запуска (для WhatsApp)
+  api_key?: string; // Всегда равен instance.id
   token?: string; // Bot token для Telegram
-  current_api_key?: string; // Текущий API ключ
   api_key_generated_at?: Date; // Время генерации API ключа
   last_qr_generated_at?: Date; // Время последнего QR кода
   api_webhook_schema: object; // По умолчанию {}

@@ -74,6 +74,14 @@ export abstract class BaseMessengerProvider extends EventEmitter {
     }
 
     try {
+      // Пытаемся получить agent_id (может быть переопределено в дочерних классах)
+      let agentId: string | undefined;
+      try {
+        agentId = await this.getAgentId();
+      } catch (error) {
+        // Игнорируем ошибки получения agent_id для обратной совместимости
+      }
+
       const messageData: MessageData = {
         instance_id: this.instanceId,
         message_id: message.id,
@@ -85,6 +93,7 @@ export abstract class BaseMessengerProvider extends EventEmitter {
         is_group: message.chatId?.includes('@g.us') || false,
         group_id: message.chatId?.includes('@g.us') ? message.chatId : undefined,
         contact_name: message.contact,
+        agent_id: agentId,
         timestamp: new Date(message.timestamp).getTime(),
       };
 
@@ -92,6 +101,14 @@ export abstract class BaseMessengerProvider extends EventEmitter {
     } catch (error) {
       logger.error(`Failed to store message for provider ${this.config.provider}:`, error);
     }
+  }
+
+  /**
+   * Получает agent_id для текущего инстанса
+   * Может быть переопределено в дочерних классах
+   */
+  protected async getAgentId(): Promise<string | undefined> {
+    return undefined;
   }
 
   protected emitEvent(event: string, data: Record<string, unknown>): void {

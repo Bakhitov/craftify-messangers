@@ -133,35 +133,12 @@ export class ComposeService {
   }
 
   /**
-   * Извлекает реальный API ключ из логов контейнера WhatsApp
+   * Извлекает API ключ (всегда равен instanceId)
    */
   async extractApiKeyFromLogs(instanceId: string): Promise<string | null> {
-    try {
-      const containerName = NamingUtils.getApiContainerName(instanceId);
-      logger.info(`Extracting API key from container logs: ${containerName}`);
-
-      // Получаем логи контейнера
-      const logs = await this.dockerService.getContainerLogsByName(containerName);
-
-      // Ищем строку с API ключом в формате "WhatsApp API key: <ключ>"
-      const apiKeyRegex = /WhatsApp API key:\s*([a-f0-9]{64})/i;
-      const lines = logs.split('\n');
-
-      for (const line of lines) {
-        const match = line.match(apiKeyRegex);
-        if (match && match[1]) {
-          const apiKey = match[1].trim();
-          logger.info(`API key extracted from logs: ${apiKey.substring(0, 16)}...`);
-          return apiKey;
-        }
-      }
-
-      logger.warn(`API key not found in logs for instance ${instanceId}`);
-      return null;
-    } catch (error) {
-      logger.error(`Failed to extract API key from logs for instance ${instanceId}`, error);
-      return null;
-    }
+    // API ключ всегда равен instanceId
+    logger.info(`Using instance ID as static API key: ${instanceId}`);
+    return instanceId;
   }
 
   async waitForApiReady(
@@ -177,36 +154,22 @@ export class ComposeService {
       `Waiting for API to be ready for instance ${instance.id} (timeout: ${maxAttempts * 3} seconds)`,
     );
 
-    let apiKey: string | null = null;
-    let apiKeyUpdated = false;
+    // API ключ всегда равен instanceId
+    const apiKey = instance.id;
+
+    // Немедленно вызываем callback с API ключом
+    if (onApiKeyExtracted) {
+      try {
+        await onApiKeyExtracted(apiKey);
+        logger.info(`API key updated in database for instance ${instance.id}`);
+      } catch (error) {
+        logger.error(`Failed to update API key in database for instance ${instance.id}`, error);
+      }
+    }
 
     // Проверяем, что API сервер запущен и доступен
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        // Сначала пытаемся извлечь API ключ из логов (только каждые 5 попыток для снижения нагрузки)
-        if (!apiKey && attempt % 5 === 1) {
-          const extractedKey = await this.extractApiKeyFromLogs(instance.id);
-
-          if (extractedKey && extractedKey !== instance.id) {
-            logger.info(`API key found in logs: ${extractedKey.substring(0, 16)}...`);
-            apiKey = extractedKey;
-
-            // Немедленно обновляем API ключ в базе данных
-            if (onApiKeyExtracted && !apiKeyUpdated) {
-              try {
-                await onApiKeyExtracted(apiKey);
-                apiKeyUpdated = true;
-                logger.info(`API key immediately updated in database for instance ${instance.id}`);
-              } catch (error) {
-                logger.error(
-                  `Failed to update API key in database for instance ${instance.id}`,
-                  error,
-                );
-              }
-            }
-          }
-        }
-
         // Проверяем health endpoint без авторизации
         const healthResponse = await axios.get(
           `http://host.docker.internal:${instance.port_api}/api/health`,
@@ -218,13 +181,7 @@ export class ComposeService {
         if (healthResponse.status === 200) {
           logger.info(`API health check passed after ${attempt} attempts`);
 
-          // Если у нас нет API ключа из логов, используем ID как fallback
-          if (!apiKey) {
-            logger.warn(`Using instance ID as fallback API key for ${instance.id}`);
-            apiKey = instance.id;
-          }
-
-          // Проверяем API с полученным ключом
+          // Проверяем API с instanceId как ключом
           try {
             const statusResponse = await axios.get(
               `http://host.docker.internal:${instance.port_api}/api/status`,
@@ -241,31 +198,20 @@ export class ComposeService {
               return apiKey;
             }
           } catch {
-            logger.debug(
-              `API authentication failed with extracted key, attempt ${attempt}/${maxAttempts}`,
-            );
+            logger.debug(`API authentication failed, attempt ${attempt}/${maxAttempts}`);
           }
         }
       } catch {
         logger.debug(`API not responding yet, attempt ${attempt}/${maxAttempts}`);
       }
 
-      // Ждем 3 секунды перед следующей попыткой (увеличено с 2 секунд)
+      // Ждем 3 секунды перед следующей попыткой
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
 
-    // Если API не ответил после всех попыток, возвращаем найденный ключ или ID
-    if (apiKey && apiKey !== instance.id) {
-      logger.warn(
-        `API did not respond after ${maxAttempts} attempts, but API key was extracted from logs: ${apiKey.substring(0, 16)}...`,
-      );
-      return apiKey;
-    } else {
-      logger.warn(
-        `API did not respond after ${maxAttempts} attempts, returning instance ID as fallback`,
-      );
-      return instance.id;
-    }
+    // Возвращаем instanceId как API ключ даже если API не ответил
+    logger.warn(`API did not respond after ${maxAttempts} attempts, returning instance ID as API key`);
+    return apiKey;
   }
 
   async updateApiKeyInCompose(instanceId: string, apiKey: string): Promise<void> {
