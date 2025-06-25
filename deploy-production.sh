@@ -58,8 +58,8 @@ CREATE DATABASE ai;
 CREATE USER ai WITH PASSWORD 'ai_prod_secure_password_2025';
 GRANT ALL PRIVILEGES ON DATABASE ai TO ai;
 \c ai
-CREATE SCHEMA IF NOT EXISTS ai;
-GRANT ALL ON SCHEMA ai TO ai;
+CREATE SCHEMA IF NOT EXISTS public;
+GRANT ALL ON SCHEMA public TO public;
 EOF
 
 # 9. Проверка подключения к БД

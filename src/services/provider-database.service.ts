@@ -288,7 +288,7 @@ export class ProviderDatabaseService {
       const placeholders = allFields.map((_, index) => `$${index + 1}`).join(', ');
 
       const query = `
-        INSERT INTO ai.${tableName} (${allFields.join(', ')})
+        INSERT INTO public.${tableName} (${allFields.join(', ')})
         VALUES (${placeholders})
         RETURNING id
       `;
@@ -333,7 +333,7 @@ export class ProviderDatabaseService {
       }
 
       const tableName = this.getTableName(provider);
-      const query = `SELECT * FROM ai.${tableName} WHERE id = $1`;
+      const query = `SELECT * FROM public.${tableName} WHERE id = $1`;
       const result = await this.pool.query(query, [id]);
 
       if (result.rows.length === 0) {
@@ -353,7 +353,7 @@ export class ProviderDatabaseService {
   async getInstancesByProvider(provider: MessengerProvider): Promise<ProviderInstanceData[]> {
     try {
       const tableName = this.getTableName(provider);
-      const query = `SELECT * FROM ai.${tableName} ORDER BY created_at DESC`;
+      const query = `SELECT * FROM public.${tableName} ORDER BY created_at DESC`;
       const result = await this.pool.query(query);
 
       return result.rows.map(row => this.mapRowToInstanceData(row, provider));
@@ -381,7 +381,7 @@ export class ProviderDatabaseService {
 
       for (const provider of providers) {
         const tableName = this.getTableName(provider);
-        const query = `SELECT * FROM ai.${tableName} WHERE user_id = $1 ORDER BY created_at DESC`;
+        const query = `SELECT * FROM public.${tableName} WHERE user_id = $1 ORDER BY created_at DESC`;
         const result = await this.pool.query(query, [userId]);
 
         for (const row of result.rows) {
@@ -453,7 +453,7 @@ export class ProviderDatabaseService {
       updateValues.push(id);
 
       const query = `
-        UPDATE ai.${tableName} 
+        UPDATE public.${tableName} 
         SET ${updateFields.join(', ')}
         WHERE id = $${paramIndex}
       `;
@@ -479,7 +479,7 @@ export class ProviderDatabaseService {
       }
 
       const tableName = this.getTableName(existingInstance.provider);
-      const query = `DELETE FROM ai.${tableName} WHERE id = $1`;
+      const query = `DELETE FROM public.${tableName} WHERE id = $1`;
 
       await this.pool.query(query, [id]);
       logger.info(`Deleted ${existingInstance.provider} instance: ${id}`);
@@ -621,7 +621,7 @@ export class ProviderDatabaseService {
     for (const provider of providers) {
       try {
         const tableName = this.getTableName(provider);
-        const query = `SELECT COUNT(*) as count FROM ai.${tableName}`;
+        const query = `SELECT COUNT(*) as count FROM public.${tableName}`;
         const result = await this.pool.query(query);
         stats[provider] = parseInt(result.rows[0].count);
       } catch (error) {

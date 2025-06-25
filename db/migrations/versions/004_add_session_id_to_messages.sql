@@ -6,11 +6,11 @@
 BEGIN;
 
 -- Добавляем поле session_id в таблицу messages
-ALTER TABLE ai.messages 
+ALTER TABLE public.messages 
 ADD COLUMN IF NOT EXISTS session_id UUID;
 
 -- Создаем индекс для session_id
-CREATE INDEX IF NOT EXISTS idx_messages_session_id ON ai.messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_messages_session_id ON public.messages(session_id);
 
 -- Создаем функцию для генерации session_id из agent_id и chat_id
 CREATE OR REPLACE FUNCTION generate_session_id(p_agent_id TEXT, p_chat_id TEXT) 
@@ -30,7 +30,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Обновляем существующие записи, устанавливая session_id для записей с agent_id
-UPDATE ai.messages 
+UPDATE public.messages 
 SET session_id = generate_session_id(agent_id, chat_id)
 WHERE agent_id IS NOT NULL AND agent_id != '' AND chat_id IS NOT NULL AND chat_id != '';
 

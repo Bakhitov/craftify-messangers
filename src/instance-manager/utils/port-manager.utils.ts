@@ -28,7 +28,7 @@ export class PortManager {
 
   constructor(private pool: Pool) {
     const config = getDatabaseConfig();
-    this.schema = config.schema || 'ai';
+    this.schema = config.schema || 'public';
 
     // Очистка просроченных резерваций каждые 10 секунд
     setInterval(() => this.cleanupExpiredReservations(), 10000);

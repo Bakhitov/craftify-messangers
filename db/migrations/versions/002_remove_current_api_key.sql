@@ -1,20 +1,20 @@
--- Миграция для удаления current_api_key из базы данных
--- Файл: 002_remove_current_api_key.sql
+-- Migration: Remove current_api_key field from all tables
+-- Created: 2025-01-20
 
--- 1. Удаляем current_api_key из ai.message_instances
-ALTER TABLE ai.message_instances DROP COLUMN IF EXISTS current_api_key;
+-- 1. Удаляем current_api_key из public.message_instances
+ALTER TABLE public.message_instances DROP COLUMN IF EXISTS current_api_key;
 
--- 2. Обновляем api_key равным id для всех записей где api_key пустой или null
-UPDATE ai.message_instances 
-SET api_key = id 
+-- 2. Устанавливаем api_key = id для всех записей где api_key IS NULL
+UPDATE public.message_instances
+SET api_key = id::text 
 WHERE api_key IS NULL OR api_key = '';
 
--- 3. Обновляем api_key_generated_at для записей где он пустой
-UPDATE ai.message_instances 
-SET api_key_generated_at = COALESCE(created_at, NOW()) 
-WHERE api_key_generated_at IS NULL;
+-- 3. Устанавливаем api_key = id для всех записей где api_key не равен id
+UPDATE public.message_instances
+SET api_key = id::text 
+WHERE api_key != id::text;
 
--- Удаляем current_api_key из таблиц провайдеров (если существуют)
+-- 4. Удаляем current_api_key из всех таблиц провайдеров (если они существуют)
 ALTER TABLE IF EXISTS public.whatsappweb_instances DROP COLUMN IF EXISTS current_api_key;
 ALTER TABLE IF EXISTS public.telegram_instances DROP COLUMN IF EXISTS current_api_key;
 ALTER TABLE IF EXISTS public.whatsapp_official_instances DROP COLUMN IF EXISTS current_api_key;

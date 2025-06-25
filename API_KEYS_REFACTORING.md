@@ -16,8 +16,8 @@
 
 ### 3. Обновление схемы базы данных
 ```sql
--- Новая структура ai.message_instances
-CREATE TABLE ai.message_instances (
+-- Новая структура public.message_instances
+CREATE TABLE public.message_instances (
   id UUID NOT NULL DEFAULT gen_random_uuid(),
   user_id VARCHAR(255) NULL,
   provider VARCHAR NOT NULL DEFAULT 'whatsappweb',
@@ -149,10 +149,10 @@ const response = await fetch('/api/v1/telegram/send-message', {
 ### Проверка после миграции
 ```bash
 # 1. Проверить структуру таблицы
-psql $DATABASE_URL -c "\d ai.message_instances"
+psql $DATABASE_URL -c "\d public.message_instances"
 
 # 2. Проверить данные
-psql $DATABASE_URL -c "SELECT id, api_key, api_key = id as keys_match FROM ai.message_instances LIMIT 5;"
+psql $DATABASE_URL -c "SELECT id, api_key, api_key = id as keys_match FROM public.message_instances LIMIT 5;"
 
 # 3. Запустить приложение
 npm run dev

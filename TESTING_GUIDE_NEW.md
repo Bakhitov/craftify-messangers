@@ -18,7 +18,7 @@
 - **Host**: `db.wyehpfzafbjfvyjzgjss.supabase.co`
 - **Port**: `5432` (Direct), `6543` (Transaction mode)
 - **Database**: `postgres`
-- **Schema**: `ai` (основная), `public` (legacy)
+- **Schema**: `public` (основная)
 - **SSL**: Обязательно включен
 
 ### Настройка окружения
@@ -90,35 +90,35 @@ docker logs wweb-mcp-instance-manager-1 -f
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "SELECT 1;"
 ```
 
-### Проверка таблиц в схеме ai
+### Проверка таблиц в схеме public
 ```bash
-# Проверка существования таблиц в схеме ai
+# Проверка существования таблиц в схеме public
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
 SELECT table_name, table_schema 
 FROM information_schema.tables 
-WHERE table_schema = 'ai' 
+WHERE table_schema = 'public' 
 AND table_name LIKE '%instances%';
 "
 
 # Проверка структуры таблиц провайдеров
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
-\d ai.whatsappweb_instances
+\d public.whatsappweb_instances
 "
 
 # Проверка структуры таблицы telegram_instances
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
-\d ai.telegram_instances
+\d public.telegram_instances
 "
 
 # Проверка структуры таблицы messages
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
-\d ai.messages
+\d public.messages
 "
 
 # Проверка VIEW all_instances
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
 SELECT provider, COUNT(*) as count 
-FROM ai.all_instances 
+FROM public.all_instances 
 GROUP BY provider;
 "
 ```
@@ -162,7 +162,7 @@ curl http://localhost:3000/health
 #### Создание WhatsApp Web экземпляра
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/instances \
+curl -X POST http://13.61.141.6:3000/api/v1/instances \
 -H "Content-Type: application/json" \
 -d '{
   "user_id": "test-whatsapp-user-001", 
@@ -184,7 +184,7 @@ curl -X POST http://localhost:3000/api/v1/instances \
 #### Создание Telegram экземпляра
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/instances \
+curl -X POST http://13.61.141.6:3000/api/v1/instances \
 -H "Content-Type: application/json" \
 -d '{
     "user_id": "test-telegram-user-001",
@@ -294,19 +294,19 @@ curl -X POST http://localhost:3000/api/v1/instances/{INSTANCE_ID}/stop
 curl -X POST http://localhost:3000/api/v1/instances/{INSTANCE_ID}/restart
 
 # Удаление экземпляра
-curl -X DELETE http://localhost:3000/api/v1/instances/{INSTANCE_ID}
+curl -X DELETE http://localhost:3000/api/v1/instances/f58e2c89-a5ab-44a5-95c3-f41bfc005ef3
 
 # Получение статуса аутентификации
 curl http://localhost:3000/api/v1/instances/{INSTANCE_ID}/auth-status
 
 # Получение QR кода для WhatsApp
-curl http://localhost:3000/api/v1/instances/{INSTANCE_ID}/qr
+curl http://13.61.141.6:3000/api/v1/instances/9ccf5650-3442-416e-98c7-bc12a8ff8dc5/qr
 
 # Получение учетных данных
 curl http://localhost:3000/api/v1/instances/{INSTANCE_ID}/credentials
 
 # Получение логов экземпляра
-curl "http://localhost:3000/api/v1/instances/{INSTANCE_ID}/logs?tail=50"
+curl "http://localhost:3000/api/v1/instances/f58e2c89-a5ab-44a5-95c3-f41bfc005ef3/logs?tail=500"
 ```
 
 #### Мониторинг ресурсов
@@ -1055,13 +1055,13 @@ echo "1️⃣ Проверка текущего состояния базы да
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
 SELECT table_name 
 FROM information_schema.tables 
-WHERE table_schema = 'ai' 
+WHERE table_schema = 'public' 
 AND table_name LIKE '%instances%';"
 
 # 2. Создание тестовых данных (если нужно)
 echo "2️⃣ Создание тестовых данных..."
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
-INSERT INTO ai.whatsappweb_instances (user_id, provider, type_instance) 
+INSERT INTO public.whatsappweb_instances (user_id, provider, type_instance) 
 VALUES ('test-migration-user', 'whatsappweb', ARRAY['api'])
 ON CONFLICT DO NOTHING;"
 
@@ -1074,7 +1074,7 @@ echo "4️⃣ Проверка результатов миграции..."
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
 SELECT table_name, table_schema 
 FROM information_schema.tables 
-WHERE table_schema = 'ai' 
+WHERE table_schema = 'public' 
 AND table_name LIKE '%instances%'
 ORDER BY table_name;"
 
@@ -1082,7 +1082,7 @@ ORDER BY table_name;"
 echo "5️⃣ Проверка VIEW all_instances..."
 docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
 SELECT provider, COUNT(*) as count 
-FROM ai.all_instances 
+FROM public.all_instances 
 GROUP BY provider;"
 
 # 6. Тест rollback (опционально)
@@ -1094,7 +1094,7 @@ if [ "$1" = "test-rollback" ]; then
     docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
     SELECT table_name 
     FROM information_schema.tables 
-    WHERE table_schema = 'ai' 
+    WHERE table_schema = 'public' 
     AND table_name LIKE '%instances%';"
 fi
 
@@ -1202,7 +1202,7 @@ curl http://localhost:3000/api/v1/instances/memory/stats
 ### Диагностические команды
 
 ```bash
-# Полная диагностика системы
+# Полная диагностика системы WWEB-MCP
 cat > diagnose-system.sh << 'EOF'
 #!/bin/bash
 
@@ -1321,7 +1321,7 @@ chmod +x diagnose-system.sh
 7. **Discord** - Discord.js интеграция
 
 ### База данных
-- **Схема ai**: Основная рабочая схема
+- **Схема public**: Основная рабочая схема
 - **Разделенные таблицы**: `whatsappweb_instances`, `telegram_instances`, `discord_instances`, etc.
 - **VIEW all_instances**: Объединенный вид всех провайдеров
 - **Миграции**: Автоматическое разделение таблиц с rollback 

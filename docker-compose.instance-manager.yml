@@ -28,7 +28,7 @@ services:
     environment:
       - NODE_ENV=development
       - LOG_LEVEL=${LOG_LEVEL:-debug}
-      - DATABASE_SCHEMA=${DATABASE_SCHEMA:-ai}
+      - DATABASE_SCHEMA=${DATABASE_SCHEMA:-public}
       # Database connection - Supabase
       - DATABASE_URL=${DATABASE_URL}
       - DATABASE_HOST=${DATABASE_HOST}

@@ -104,7 +104,7 @@ DB_NAME=wweb_instances
 DB_USER=postgres
 DB_PASSWORD=password
 DB_SSL=false
-DATABASE_SCHEMA=ai
+DATABASE_SCHEMA=public
 
 # WhatsApp настройки
 WHATSAPP_AUTH_STRATEGY=local

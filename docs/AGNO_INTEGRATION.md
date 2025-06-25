@@ -32,14 +32,14 @@ environment:
 
 ```sql
 -- Включение агентной интеграции для инстанса
-UPDATE ai.message_instances 
+UPDATE public.message_instances 
 SET 
   agent_id = 'your-agent-id',     -- ID агента в агентной системе
   agno_enable = true              -- Включение агентной интеграции
 WHERE id = 'your-instance-id';
 
 -- Отключение агентной интеграции
-UPDATE ai.message_instances 
+UPDATE public.message_instances 
 SET agno_enable = false 
 WHERE id = 'your-instance-id';
 ```
@@ -89,7 +89,7 @@ Content-Type: application/json
 
 ```sql
 -- Создание тестового инстанса с агентной интеграцией
-UPDATE ai.message_instances 
+UPDATE public.message_instances 
 SET 
   agent_id = 'test-agent-123',
   agno_enable = true,
@@ -123,7 +123,7 @@ SELECT
   message_body,
   is_from_me,
   created_at
-FROM ai.messages 
+FROM public.messages 
 WHERE instance_id = 'your-instance-id' 
   AND is_from_me = true 
 ORDER BY created_at DESC 
@@ -192,7 +192,7 @@ SELECT
   agent_id,
   COUNT(*) as total_instances,
   COUNT(CASE WHEN agno_enable = true THEN 1 END) as active_instances
-FROM ai.message_instances 
+FROM public.message_instances 
 WHERE agent_id IS NOT NULL
 GROUP BY agent_id;
 
@@ -201,8 +201,8 @@ SELECT
   mi.agent_id,
   m.message_body,
   m.created_at
-FROM ai.messages m
-JOIN ai.message_instances mi ON m.instance_id = mi.id
+FROM public.messages m
+JOIN public.message_instances mi ON m.instance_id = mi.id
 WHERE m.is_from_me = true 
   AND mi.agent_id IS NOT NULL
 ORDER BY m.created_at DESC
