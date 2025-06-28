@@ -157,7 +157,7 @@ export class AgnoIntegrationService {
       }
 
       // Новый URL для multipart API
-      const url = `${this.config.baseUrl}/v1/agents/${agentId}/runs/multipart`;
+      const url = `${this.config.baseUrl}/v1/agents/${agentId}/runs`;
 
       // Создаем FormData для multipart/form-data запроса
       const formData = new FormData();
@@ -271,7 +271,7 @@ export class AgnoIntegrationService {
       if (axios.isAxiosError(error)) {
         logger.error('Agno API request failed', {
           agentId,
-          url: `${this.config.baseUrl}/v1/agents/${agentId}/runs/multipart`,
+          url: `${this.config.baseUrl}/v1/agents/${agentId}/runs`,
           status: error.response?.status,
           statusText: error.response?.statusText,
           message: error.message,

@@ -280,7 +280,7 @@ curl http://localhost:3000/api/v1/instances/{INSTANCE_ID}/errors
 curl -X POST http://localhost:3000/api/v1/instances/{INSTANCE_ID}/clear-errors
 
 # Обработка экземпляра (создание Docker контейнера)
-curl -X POST http://localhost:3000/api/v1/instances/b8efc348-a8c3-47ce-bef4-3ca5a2d5cab9/process \
+curl -X POST http://localhost:3000/api/v1/instances/16016aca-bb9d-4088-ae69-1a9fa27c1bfe/process \
   -H "Content-Type: application/json" \
   -d '{}'
 
