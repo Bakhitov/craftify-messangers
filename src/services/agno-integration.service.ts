@@ -7,6 +7,7 @@ export interface AgnoConfig {
   agentId: string;
   enabled: boolean;
   stream: boolean;
+  model?: string;
   userId?: string;
   sessionId?: string;
 }
@@ -31,6 +32,7 @@ export interface AgnoApiRequest {
   message: string;
   stream: boolean;
   monitor: boolean;
+  model?: string;
   user_id?: string;
   session_id?: string;
   files?: Buffer[];
@@ -79,7 +81,7 @@ export class AgnoIntegrationService {
       }
 
       const query = `
-        SELECT agent_id, agno_enable, stream, user_id 
+        SELECT agent_id, agno_enable, stream, model, user_id 
         FROM public.message_instances 
         WHERE id = $1 
           AND agno_enable = TRUE 
@@ -98,6 +100,7 @@ export class AgnoIntegrationService {
         agentId: row.agent_id,
         enabled: row.agno_enable,
         stream: row.stream,
+        model: row.model || 'gpt-4.1', // Значение по умолчанию
         userId: row.user_id,
         sessionId: undefined, // session_id будет устанавливаться в провайдерах
       };
@@ -107,6 +110,7 @@ export class AgnoIntegrationService {
         agentId: config.agentId,
         enabled: config.enabled,
         stream: config.stream,
+        model: config.model,
         userId: config.userId,
         sessionId: 'will be set by provider', // Указываем что будет установлен провайдером
       });
@@ -152,14 +156,17 @@ export class AgnoIntegrationService {
         return null;
       }
 
-      // Новый URL для playground API
-      const url = `${this.config.baseUrl}/v1/playground/agents/${agentId}/runs`;
+      // Новый URL для multipart API
+      const url = `${this.config.baseUrl}/v1/agents/${agentId}/runs/multipart`;
 
       // Создаем FormData для multipart/form-data запроса
       const formData = new FormData();
       formData.append('message', message.trim());
       formData.append('stream', config.stream.toString());
-      formData.append('monitor', 'false');
+      
+      if (config.model) {
+        formData.append('model', config.model);
+      }
       
       if (config.userId) {
         formData.append('user_id', config.userId);
@@ -185,6 +192,7 @@ export class AgnoIntegrationService {
         messageLength: message.length,
         filesCount: files.length,
         stream: config.stream,
+        model: config.model,
         userId: config.userId,
         sessionId: config.sessionId,
       });
@@ -213,6 +221,7 @@ export class AgnoIntegrationService {
         dataLength: JSON.stringify(response.data)?.length || 0,
         filesCount: files.length,
         stream: config.stream,
+        model: config.model,
       });
 
       // Обрабатываем новый формат ответа
@@ -245,6 +254,7 @@ export class AgnoIntegrationService {
         metrics: responseData.metrics,
         filesCount: files.length,
         stream: config.stream,
+        model: config.model,
       });
 
       // Возвращаем стандартизированный ответ
@@ -261,7 +271,7 @@ export class AgnoIntegrationService {
       if (axios.isAxiosError(error)) {
         logger.error('Agno API request failed', {
           agentId,
-          url: `${this.config.baseUrl}/v1/playground/agents/${agentId}/runs`,
+          url: `${this.config.baseUrl}/v1/agents/${agentId}/runs/multipart`,
           status: error.response?.status,
           statusText: error.response?.statusText,
           message: error.message,
@@ -269,6 +279,7 @@ export class AgnoIntegrationService {
           responseData: error.response?.data,
           filesCount: files.length,
           stream: config.stream,
+          model: config.model,
         });
       } else {
         logger.error('Unexpected error in agno integration', {

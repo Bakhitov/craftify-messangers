@@ -93,7 +93,7 @@ docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "SELECT 1;"
 ### Проверка таблиц в схеме public
 ```bash
 # Проверка существования таблиц в схеме public
-docker exec wweb-mcp-instance-manager-1 psql $DATABASE_URL -c "
+docker exec craftify-messangers-instance-manager psql $DATABASE_URL -c "
 SELECT table_name, table_schema 
 FROM information_schema.tables 
 WHERE table_schema = 'public' 
@@ -280,7 +280,7 @@ curl http://localhost:3000/api/v1/instances/{INSTANCE_ID}/errors
 curl -X POST http://localhost:3000/api/v1/instances/{INSTANCE_ID}/clear-errors
 
 # Обработка экземпляра (создание Docker контейнера)
-curl -X POST http://localhost:3000/api/v1/instances/{INSTANCE_ID}/process \
+curl -X POST http://localhost:3000/api/v1/instances/b8efc348-a8c3-47ce-bef4-3ca5a2d5cab9/process \
   -H "Content-Type: application/json" \
   -d '{}'
 
