@@ -8,6 +8,7 @@ export interface AgnoConfig {
   enabled: boolean;
   stream: boolean;
   model?: string;
+  agnoUrl?: string;
   userId?: string;
   sessionId?: string;
 }
@@ -81,7 +82,7 @@ export class AgnoIntegrationService {
       }
 
       const query = `
-        SELECT agent_id, agno_enable, stream, model, user_id 
+        SELECT agent_id, agno_enable, stream, model, agno_url, user_id 
         FROM public.message_instances 
         WHERE id = $1 
           AND agno_enable = TRUE 
@@ -101,6 +102,7 @@ export class AgnoIntegrationService {
         enabled: row.agno_enable,
         stream: row.stream,
         model: row.model || 'gpt-4.1', // Значение по умолчанию
+        agnoUrl: row.agno_url, // Полный URL из БД
         userId: row.user_id,
         sessionId: undefined, // session_id будет устанавливаться в провайдерах
       };
@@ -111,6 +113,7 @@ export class AgnoIntegrationService {
         enabled: config.enabled,
         stream: config.stream,
         model: config.model,
+        agnoUrl: config.agnoUrl,
         userId: config.userId,
         sessionId: 'will be set by provider', // Указываем что будет установлен провайдером
       });
@@ -156,8 +159,8 @@ export class AgnoIntegrationService {
         return null;
       }
 
-      // Новый URL для multipart API
-      const url = `${this.config.baseUrl}/v1/agents/${agentId}/runs`;
+      // Используем URL из БД или формируем стандартный
+      const url = config.agnoUrl || `${this.config.baseUrl}/v1/agents/${agentId}/runs`;
 
       // Создаем FormData для multipart/form-data запроса
       const formData = new FormData();
@@ -189,6 +192,7 @@ export class AgnoIntegrationService {
       logger.debug('Sending message to agno agent', {
         agentId,
         url,
+        agnoUrl: config.agnoUrl,
         messageLength: message.length,
         filesCount: files.length,
         stream: config.stream,
@@ -271,7 +275,8 @@ export class AgnoIntegrationService {
       if (axios.isAxiosError(error)) {
         logger.error('Agno API request failed', {
           agentId,
-          url: `${this.config.baseUrl}/v1/agents/${agentId}/runs`,
+          url: config.agnoUrl || `${this.config.baseUrl}/v1/agents/${agentId}/runs`,
+          agnoUrl: config.agnoUrl,
           status: error.response?.status,
           statusText: error.response?.statusText,
           message: error.message,
