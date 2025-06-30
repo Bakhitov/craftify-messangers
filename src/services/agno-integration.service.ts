@@ -82,11 +82,11 @@ export class AgnoIntegrationService {
       }
 
       const query = `
-        SELECT agent_id, agno_enable, stream, model, agno_url, user_id 
+        SELECT agno_config
         FROM public.message_instances 
         WHERE id = $1 
-          AND agno_enable = TRUE 
-          AND agent_id IS NOT NULL
+          AND agno_config IS NOT NULL
+          AND agno_config->>'enabled' = 'true'
       `;
 
       const result = await this.dbPool.query(query, [instanceId]);
@@ -97,17 +97,20 @@ export class AgnoIntegrationService {
       }
 
       const row = result.rows[0];
+      const agnoConfigJson = row.agno_config;
+
+      // Парсим JSON конфигурацию
       const config: AgnoConfig = {
-        agentId: row.agent_id,
-        enabled: row.agno_enable,
-        stream: row.stream,
-        model: row.model || 'gpt-4.1', // Значение по умолчанию
-        agnoUrl: row.agno_url, // Полный URL из БД
-        userId: row.user_id,
+        agentId: agnoConfigJson.agentId || 'agno_assist',
+        enabled: agnoConfigJson.enabled === true,
+        stream: agnoConfigJson.stream === true,
+        model: agnoConfigJson.model || 'gpt-4.1',
+        agnoUrl: agnoConfigJson.agnoUrl,
+        userId: agnoConfigJson.userId,
         sessionId: undefined, // session_id будет устанавливаться в провайдерах
       };
 
-      logger.debug('Agno config loaded from database', {
+      logger.debug('Agno config loaded from database JSON', {
         instanceId,
         agentId: config.agentId,
         enabled: config.enabled,
@@ -115,7 +118,8 @@ export class AgnoIntegrationService {
         model: config.model,
         agnoUrl: config.agnoUrl,
         userId: config.userId,
-        sessionId: 'will be set by provider', // Указываем что будет установлен провайдером
+        rawJson: agnoConfigJson,
+        sessionId: 'will be set by provider',
       });
 
       return config;
