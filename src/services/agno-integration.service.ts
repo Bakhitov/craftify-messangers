@@ -4,11 +4,11 @@ import logger from '../logger';
 const FormData = require('form-data');
 
 export interface AgnoConfig {
-  agentId: string;
+  agent_id: string;
   enabled: boolean;
   stream: boolean;
   model?: string;
-  agnoUrl?: string;
+  agnoUrl: string;
   userId?: string;
   sessionId?: string;
 }
@@ -82,7 +82,7 @@ export class AgnoIntegrationService {
       }
 
       const query = `
-        SELECT agno_config
+        SELECT agno_config, user_id
         FROM public.message_instances 
         WHERE id = $1 
           AND agno_config IS NOT NULL
@@ -98,21 +98,33 @@ export class AgnoIntegrationService {
 
       const row = result.rows[0];
       const agnoConfigJson = row.agno_config;
+      const userId = row.user_id;
+
+      // Валидируем обязательные поля
+      if (!agnoConfigJson.agnoUrl) {
+        logger.error('agnoUrl is required in agno_config', { instanceId, agnoConfigJson });
+        return null;
+      }
+
+      if (!agnoConfigJson.agent_id) {
+        logger.error('agent_id is required in agno_config', { instanceId, agnoConfigJson });
+        return null;
+      }
 
       // Парсим JSON конфигурацию
       const config: AgnoConfig = {
-        agentId: agnoConfigJson.agentId || 'agno_assist',
+        agent_id: agnoConfigJson.agent_id,
         enabled: agnoConfigJson.enabled === true,
         stream: agnoConfigJson.stream === true,
         model: agnoConfigJson.model || 'gpt-4.1',
-        agnoUrl: agnoConfigJson.agnoUrl,
-        userId: agnoConfigJson.userId,
+        agnoUrl: agnoConfigJson.agnoUrl, // URL уже содержит agent_id
+        userId: userId, // Используем user_id из экземпляра, а не из agno_config
         sessionId: undefined, // session_id будет устанавливаться в провайдерах
       };
 
       logger.debug('Agno config loaded from database JSON', {
         instanceId,
-        agentId: config.agentId,
+        agent_id: config.agent_id,
         enabled: config.enabled,
         stream: config.stream,
         model: config.model,
@@ -136,18 +148,16 @@ export class AgnoIntegrationService {
    * Отправляет сообщение в агентную систему и возвращает ответ
    */
   async sendToAgent(
-    agentId: string,
     message: string,
     config: AgnoConfig,
   ): Promise<AgnoResponse | null> {
-    return this.sendToAgentWithFiles(agentId, message, config, []);
+    return this.sendToAgentWithFiles(message, config, []);
   }
 
   /**
    * Отправляет сообщение с файлами в агентную систему и возвращает ответ
    */
   async sendToAgentWithFiles(
-    agentId: string,
     message: string,
     config: AgnoConfig,
     files: AgnoMediaFile[] = [],
@@ -159,12 +169,12 @@ export class AgnoIntegrationService {
       }
 
       if (!message || message.trim().length === 0) {
-        logger.warn('Empty message provided to agno agent', { agentId });
+        logger.warn('Empty message provided to agno agent', { agent_id: config.agent_id });
         return null;
       }
 
-      // Используем URL из БД или формируем стандартный
-      const url = config.agnoUrl || `${this.config.baseUrl}/v1/agents/${agentId}/runs`;
+      // Используем URL из конфигурации - agent_id уже вшит в URL
+      const url = config.agnoUrl;
 
       // Создаем FormData для multipart/form-data запроса
       const formData = new FormData();
@@ -194,9 +204,8 @@ export class AgnoIntegrationService {
       }
 
       logger.debug('Sending message to agno agent', {
-        agentId,
+        agent_id: config.agent_id,
         url,
-        agnoUrl: config.agnoUrl,
         messageLength: message.length,
         filesCount: files.length,
         stream: config.stream,
@@ -215,7 +224,7 @@ export class AgnoIntegrationService {
 
       if (response.status < 200 || response.status >= 300) {
         logger.warn('Agno API returned non-success status', {
-          agentId,
+          agent_id: config.agent_id,
           status: response.status,
           statusText: response.statusText,
         });
@@ -223,7 +232,7 @@ export class AgnoIntegrationService {
       }
 
       logger.debug('Raw Agno API response', {
-        agentId,
+        agent_id: config.agent_id,
         status: response.status,
         contentType: response.headers['content-type'],
         dataLength: JSON.stringify(response.data)?.length || 0,
@@ -237,7 +246,7 @@ export class AgnoIntegrationService {
       
       if (!responseData || typeof responseData !== 'object') {
         logger.warn('Agno API returned invalid response format', {
-          agentId,
+          agent_id: config.agent_id,
           response: responseData,
         });
         return null;
@@ -248,54 +257,41 @@ export class AgnoIntegrationService {
 
       if (!responseMessage || responseMessage.trim().length === 0) {
         logger.warn('Agno API returned empty response content', {
-          agentId,
+          agent_id: config.agent_id,
           response: responseData,
         });
         return null;
       }
 
-      logger.debug('Received response from agno agent', {
-        agentId,
-        responseLength: responseMessage.length,
-        runId: responseData.run_id,
-        sessionId: responseData.session_id,
-        metrics: responseData.metrics,
-        filesCount: files.length,
-        stream: config.stream,
-        model: config.model,
-      });
-
-      // Возвращаем стандартизированный ответ
-      return {
+      const agnoResponse: AgnoResponse = {
         content: responseMessage,
-        message: responseMessage, // Для обратной совместимости
-        status: responseData.status || 'completed',
+        message: responseMessage,
+        response: responseMessage,
+        status: responseData.status || 'success',
         run_id: responseData.run_id,
-        agent_id: responseData.agent_id,
+        agent_id: responseData.agent_id || config.agent_id,
         session_id: responseData.session_id,
         metrics: responseData.metrics,
       };
+
+      logger.debug('Processed Agno response', {
+        agent_id: config.agent_id,
+        messageLength: responseMessage.length,
+        status: agnoResponse.status,
+        run_id: agnoResponse.run_id,
+        session_id: agnoResponse.session_id,
+        hasMetrics: !!agnoResponse.metrics,
+      });
+
+      return agnoResponse;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        logger.error('Agno API request failed', {
-          agentId,
-          url: config.agnoUrl || `${this.config.baseUrl}/v1/agents/${agentId}/runs`,
-          agnoUrl: config.agnoUrl,
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          message: error.message,
-          timeout: error.code === 'ECONNABORTED',
-          responseData: error.response?.data,
-          filesCount: files.length,
-          stream: config.stream,
-          model: config.model,
-        });
-      } else {
-        logger.error('Unexpected error in agno integration', {
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+      logger.error('Failed to send message to agno agent', {
+        agent_id: config.agent_id,
+        url: config.agnoUrl,
+        error: error instanceof Error ? error.message : String(error),
+        messageLength: message.length,
+        filesCount: files.length,
+      });
       return null;
     }
   }

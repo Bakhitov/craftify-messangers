@@ -90,11 +90,10 @@ instancesRouter.post(
         type_instance,
         api_webhook_schema: req.body.api_webhook_schema || {},
         mcp_schema: req.body.mcp_schema || {},
-        token: provider === 'telegram' ? req.body.token : undefined, // Для Telegram сохраняем token
-        agent_id: req.body.agent_id || null, // ID агента
-        agno_enable: req.body.agno_enable !== undefined ? req.body.agno_enable : true, // Включение Agno
-        stream: req.body.stream !== undefined ? req.body.stream : false, // Поддержка стриминга
-        auth_status: req.body.auth_status || 'pending', // Статус аутентификации
+        api_key: req.body.api_key, // Для WhatsApp
+        token: req.body.token, // Для Telegram
+        auth_status: req.body.auth_status || 'pending',
+        agno_config: req.body.agno_config, // Добавляем поддержку agno_config
       };
 
       await databaseService.createInstance(instanceData);

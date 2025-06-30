@@ -84,9 +84,7 @@ export const CREATE_TABLE_SQL = `
     last_qr_generated_at TIMESTAMP WITHOUT TIME ZONE NULL,
     api_webhook_schema JSONB NULL DEFAULT '{}'::jsonb,
     mcp_schema JSONB NULL DEFAULT '{}'::jsonb,
-    agent_id TEXT NULL,
-    agno_enable BOOLEAN NULL DEFAULT true,
-    stream BOOLEAN NULL DEFAULT false,
+    agno_config JSONB NULL,
     created_at TIMESTAMP WITHOUT TIME ZONE NULL DEFAULT now(),
     updated_at TIMESTAMP WITHOUT TIME ZONE NULL DEFAULT now(),
     auth_status VARCHAR(50) NULL DEFAULT 'pending',
@@ -99,5 +97,5 @@ export const CREATE_TABLE_SQL = `
   CREATE INDEX IF NOT EXISTS idx_message_instances_user_id ON public.message_instances USING btree (user_id) TABLESPACE pg_default;
   CREATE INDEX IF NOT EXISTS idx_message_instances_provider ON public.message_instances USING btree (provider) TABLESPACE pg_default;
   CREATE INDEX IF NOT EXISTS idx_message_instances_auth_status ON public.message_instances USING btree (auth_status) TABLESPACE pg_default;
-  CREATE INDEX IF NOT EXISTS idx_message_instances_agent_id ON public.message_instances USING btree (agent_id) TABLESPACE pg_default;
+  CREATE INDEX IF NOT EXISTS idx_message_instances_agno_config_enabled ON public.message_instances USING GIN ((agno_config->'enabled')) TABLESPACE pg_default;
 `;

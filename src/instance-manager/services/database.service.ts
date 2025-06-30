@@ -256,16 +256,14 @@ export class DatabaseService {
     mcp_schema?: object;
     api_key?: string; // Поддержка api_key для WhatsApp
     token?: string; // Поддержка token для Telegram
-    agent_id?: string; // ID агента
-    agno_enable?: boolean; // Включение Agno
-    stream?: boolean; // Поддержка стриминга
     auth_status?: string; // Статус аутентификации
+    agno_config?: object; // Поддержка agno_config
   }): Promise<MessageInstance> {
     const query = `
       INSERT INTO public.message_instances (
         id, user_id, provider, type_instance, api_webhook_schema, mcp_schema, 
-        api_key, token, agent_id, agno_enable, stream, auth_status, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+        api_key, token, auth_status, agno_config, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
       RETURNING *
     `;
 
@@ -278,10 +276,8 @@ export class DatabaseService {
       JSON.stringify(instanceData.mcp_schema || {}),
       instanceData.api_key || null, // Для WhatsApp
       instanceData.token || null, // Для Telegram
-      instanceData.agent_id || null, // ID агента
-      instanceData.agno_enable !== undefined ? instanceData.agno_enable : true, // Включение Agno
-      instanceData.stream !== undefined ? instanceData.stream : false, // Поддержка стриминга
       instanceData.auth_status || 'pending', // Статус аутентификации
+      instanceData.agno_config ? JSON.stringify(instanceData.agno_config) : null, // Для Agno конфигурации
     ];
 
     const result = await this.pool.query<MessageInstance>(query, values);

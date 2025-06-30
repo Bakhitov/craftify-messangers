@@ -332,7 +332,7 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
       let agentId: string | undefined;
       try {
         const agnoConfig = await agnoIntegrationService.getAgnoConfig(config.instanceId);
-        agentId = agnoConfig?.agentId;
+        agentId = agnoConfig?.agent_id;
       } catch (error) {
         // Игнорируем ошибки получения agent_id
       }
@@ -425,7 +425,7 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
         if (agnoConfig?.enabled) {
           // Генерируем session_id детерминированно из agent_id + chat_id
           const chatId = message.from;
-          const sessionId = generateSessionId(agnoConfig.agentId, chatId);
+          const sessionId = generateSessionId(agnoConfig.agent_id, chatId);
           
           // Обновляем конфигурацию с сгенерированным session_id
           const configWithSession = {
@@ -476,7 +476,6 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
 
           // Отправляем сообщение агенту (с файлами если есть)
           const agnoResponse = await agnoIntegrationService.sendToAgentWithFiles(
-            agnoConfig.agentId,
             messageText,
             configWithSession,
             agnoFiles,
@@ -522,14 +521,14 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
                 is_group: isGroup,
                 group_id: isGroup ? message.from : undefined,
                 contact_name: contact.pushname || contact.name,
-                agent_id: agnoConfig.agentId, // Добавляем agent_id
+                agent_id: agnoConfig.agent_id, // Добавляем agent_id
                 message_source: 'agno', // Ответ от AI агента
                 timestamp: Date.now(),
               });
             }
 
             logger.debug('Agno response sent and saved', {
-              agentId: agnoConfig.agentId,
+              agentId: agnoConfig.agent_id,
               responseLength: responseMessage.length,
               messageId: sentMessage.id._serialized,
               runId: agnoResponse.run_id,
@@ -614,7 +613,7 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
       let agentId: string | undefined;
       try {
         const agnoConfig = await agnoIntegrationService.getAgnoConfig(config.instanceId);
-        agentId = agnoConfig?.agentId;
+        agentId = agnoConfig?.agent_id;
       } catch (error) {
         // Игнорируем ошибки получения agent_id
       }
@@ -805,11 +804,17 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
 
 /**
  * Генерирует детерминированный session_id из agent_id и chat_id
+ * @param agentId ID агента (может быть undefined)
+ * @param chatId ID чата
+ * @returns session_id или undefined если нет chatId
  */
-function generateSessionId(agentId: string, chatId: string): string {
-  // Используем детерминированную генерацию UUID (такую же как в MessageStorageService)
+function generateSessionId(agentId?: string, chatId?: string): string | undefined {
+  if (!chatId) {
+    return undefined;
+  }
+  
   const crypto = require('crypto');
-  const sessionString = `session:${agentId}:${chatId}`;
+  const sessionString = agentId ? `session:${agentId}:${chatId}` : `session:${chatId}`;
   const hash = crypto.createHash('sha256').update(sessionString).digest('hex');
   
   // Форматируем как UUID v4

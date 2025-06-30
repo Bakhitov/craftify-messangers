@@ -184,18 +184,22 @@ curl -X POST http://13.61.141.6:3000/api/v1/instances \
 #### Создание Telegram экземпляра
 
 ```bash
-curl -X POST http://13.61.141.6:3000/api/v1/instances \
+curl -X POST http://localhost:3000/api/v1/instances \
 -H "Content-Type: application/json" \
 -d '{
     "user_id": "test-telegram-user-001",
-    "agent_id": "671088",
     "provider": "telegram",
-    "agno_enable": true,
-    "stream": false,
     "type_instance": ["api"],
     "token": "7961413009:AAGEp-pakPC5OmvgTyXBLmNGoSlLdCAzg28",
+    "agno_config": {
+        "model": "gpt-4.1",
+        "stream": false,
+        "agnoUrl": "https://crafty-v0-0-1.onrender.com/v1/agents/finance_analyst_v1/runs",
+        "enabled": true,
+        "agent_id": "finance_analyst_v1"
+    },
     "api_webhook_schema": {
-        "enabled": true, 
+        "enabled": true,
         "url": "https://workflows-api.jetadmin.io/hooks/gvUIflaSb70RevttxcJSgwypdMJjO5Yu"
     }
 }'

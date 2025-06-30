@@ -81,9 +81,9 @@ export class TelegramProvider extends BaseMessengerProvider {
           try {
             const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
             if (agnoConfig?.enabled) {
-              // Генерируем session_id детерминированно из agent_id + chat_id
-              const chatId = ctx.chat?.id.toString() || '';
-              const sessionId = this.generateSessionId(agnoConfig.agentId, chatId);
+                              // Генерируем session_id детерминированно из agent_id + chat_id
+                const chatId = ctx.chat?.id.toString() || '';
+                const sessionId = this.generateSessionId(agnoConfig.agent_id, chatId);
               
               // Обновляем конфигурацию с сгенерированным session_id
               const configWithSession = {
@@ -165,13 +165,12 @@ export class TelegramProvider extends BaseMessengerProvider {
                 }
               }
 
-              // Отправляем сообщение агенту (с файлами если есть)
-              const agnoResponse = await this.agnoIntegrationService.sendToAgentWithFiles(
-                agnoConfig.agentId,
-                finalMessageText,
-                configWithSession,
-                agnoFiles,
-              );
+                              // Отправляем сообщение агенту (с файлами если есть)
+                const agnoResponse = await this.agnoIntegrationService.sendToAgentWithFiles(
+                  finalMessageText,
+                  configWithSession,
+                  agnoFiles,
+                );
 
               // Если получили ответ от агента
               const responseMessage = agnoResponse?.content || agnoResponse?.message;
@@ -197,14 +196,14 @@ export class TelegramProvider extends BaseMessengerProvider {
                         ? ctx.chat.id.toString()
                         : undefined,
                     contact_name: this.getFullContactName(ctx.from),
-                    agent_id: agnoConfig.agentId, // Добавляем agent_id
+                    agent_id: agnoConfig.agent_id, // Добавляем agent_id
                     message_source: 'agno', // Ответ от AI агента
                     timestamp: Date.now(),
                   });
                 }
 
                 this.logDebug('Agno response sent and saved', {
-                  agentId: agnoConfig.agentId,
+                  agentId: agnoConfig.agent_id,
                   responseLength: responseMessage.length,
                   messageId: sentMessage.message_id,
                   runId: agnoResponse.run_id,
@@ -221,7 +220,7 @@ export class TelegramProvider extends BaseMessengerProvider {
         try {
           if (this.instanceId) {
             const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
-            agentId = agnoConfig?.agentId;
+            agentId = agnoConfig?.agent_id;
           }
         } catch (error) {
           // Игнорируем ошибки получения agent_id
@@ -840,10 +839,8 @@ export class TelegramProvider extends BaseMessengerProvider {
       // Получаем agent_id из конфигурации Agno
       let agentId: string | undefined;
       try {
-        if (this.instanceId) {
-          const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
-          agentId = agnoConfig?.agentId;
-        }
+        const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
+        agentId = agnoConfig?.agent_id;
       } catch (error) {
         this.logDebug('Could not get Agno config for storing message', { error });
       }
@@ -928,23 +925,27 @@ export class TelegramProvider extends BaseMessengerProvider {
    * Переопределяем метод getAgentId для получения agent_id из Agno конфигурации
    */
   protected async getAgentId(): Promise<string | undefined> {
-    if (!this.instanceId) {
-      return undefined;
-    }
-
     try {
+      if (!this.instanceId) {
+        return undefined;
+      }
       const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
-      return agnoConfig?.agentId;
+      logger.debug('Agno config for agent_id', { instanceId: this.instanceId, agnoConfig });
+      return agnoConfig?.agent_id;
     } catch (error) {
-      this.logDebug('Could not get Agno config for agent_id', { error });
+      logger.error('Failed to get agent_id from Agno config', { error });
       return undefined;
     }
   }
 
-  private generateSessionId(agentId: string, chatId: string): string {
+  private generateSessionId(agentId?: string, chatId?: string): string | undefined {
+    if (!chatId) {
+      return undefined;
+    }
+    
     // Используем детерминированную генерацию UUID (такую же как в MessageStorageService)
     const crypto = require('crypto');
-    const sessionString = `session:${agentId}:${chatId}`;
+    const sessionString = agentId ? `session:${agentId}:${chatId}` : `session:${chatId}`;
     const hash = crypto.createHash('sha256').update(sessionString).digest('hex');
     
     // Форматируем как UUID v4

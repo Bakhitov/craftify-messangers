@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { randomUUID } from 'crypto';
 import { getDatabaseConfig } from '../config/database.config';
 import {
   MessengerProvider,
@@ -12,35 +13,32 @@ import {
 } from '../types';
 import logger from '../logger';
 
-export interface BaseInstanceData {
+export interface InstanceData {
   id?: string;
-  user_id?: string;
-  provider: MessengerProvider;
-  type_instance?: string[];
-  port_api?: number;
-  port_mcp?: number;
+  provider: string;
+  account?: string;
+  status?: string;
+  phone?: string;
   api_key?: string;
-  api_key_generated_at?: Date;
+  token?: string;
+  qr_code?: string;
+  webhook_url?: string;
   api_webhook_schema?: any;
   mcp_schema?: any;
-  agent_id?: string;
-  agno_enable?: boolean;
-  stream?: boolean;
+  auth_status?: string;
+  last_qr_update?: Date;
   created_at?: Date;
   updated_at?: Date;
-  auth_status?: string;
-  account?: string;
 }
 
-export interface TelegramInstanceData extends BaseInstanceData {
+export interface TelegramInstanceData extends InstanceData {
   provider: 'telegram';
   bot_token: string;
   bot_username?: string;
-  webhook_url?: string;
   webhook_secret?: string;
 }
 
-export interface WhatsAppOfficialInstanceData extends BaseInstanceData {
+export interface WhatsAppOfficialInstanceData extends InstanceData {
   provider: 'whatsapp-official';
   phone_number_id: string;
   access_token: string;
@@ -49,7 +47,7 @@ export interface WhatsAppOfficialInstanceData extends BaseInstanceData {
   api_version?: string;
 }
 
-export interface FacebookMessengerInstanceData extends BaseInstanceData {
+export interface FacebookMessengerInstanceData extends InstanceData {
   provider: 'facebook-messenger';
   page_access_token: string;
   page_id: string;
@@ -58,7 +56,7 @@ export interface FacebookMessengerInstanceData extends BaseInstanceData {
   api_version?: string;
 }
 
-export interface InstagramInstanceData extends BaseInstanceData {
+export interface InstagramInstanceData extends InstanceData {
   provider: 'instagram';
   access_token: string;
   instagram_user_id: string;
@@ -66,17 +64,16 @@ export interface InstagramInstanceData extends BaseInstanceData {
   webhook_verify_token?: string;
 }
 
-export interface SlackInstanceData extends BaseInstanceData {
+export interface SlackInstanceData extends InstanceData {
   provider: 'slack';
   bot_token: string;
   app_token?: string;
   signing_secret: string;
   team_id?: string;
   socket_mode?: boolean;
-  webhook_url?: string;
 }
 
-export interface DiscordInstanceData extends BaseInstanceData {
+export interface DiscordInstanceData extends InstanceData {
   provider: 'discord';
   bot_token: string;
   client_id: string;
@@ -85,7 +82,7 @@ export interface DiscordInstanceData extends BaseInstanceData {
   intents?: number[];
 }
 
-export interface WhatsAppWebInstanceData extends BaseInstanceData {
+export interface WhatsAppWebInstanceData extends InstanceData {
   provider: 'whatsapp' | 'whatsappweb';
   last_qr_generated_at?: Date;
   whatsapp_state?: string;
@@ -104,6 +101,7 @@ export type ProviderInstanceData =
 export class ProviderDatabaseService {
   private pool: Pool;
   private config: any;
+  private schema: string = 'public';
 
   constructor(pool: Pool) {
     this.pool = pool;
@@ -131,175 +129,56 @@ export class ProviderDatabaseService {
   /**
    * Создает новый экземпляр провайдера
    */
-  async createInstance(instanceData: ProviderInstanceData): Promise<string> {
-    const tableName = this.getTableName(instanceData.provider);
-    const id = instanceData.id || this.generateUUID();
-
+  async createInstance(instanceData: InstanceData): Promise<InstanceData | null> {
     try {
-      // Базовые поля
-      const baseFields = [
-        'id',
-        'user_id',
-        'provider',
-        'type_instance',
-        'port_api',
-        'port_mcp',
-        'api_key',
-        'api_webhook_schema',
-        'mcp_schema',
-        'agent_id',
-        'agno_enable',
-        'stream',
-        'auth_status',
-        'account',
-      ];
+      const instanceId = instanceData.id || randomUUID();
+      const tableName = this.getTableName(instanceData.provider as MessengerProvider);
 
-      const baseValues = [
-        id,
-        instanceData.user_id,
-        instanceData.provider,
-        instanceData.type_instance || ['api'],
-        instanceData.port_api,
-        instanceData.port_mcp,
-        instanceData.api_key,
-        JSON.stringify(instanceData.api_webhook_schema || {}),
-        JSON.stringify(instanceData.mcp_schema || {}),
-        instanceData.agent_id,
-        instanceData.agno_enable !== false,
-        instanceData.stream || false,
-        instanceData.auth_status || 'ready',
-        instanceData.account,
-      ];
-
-      // Специфичные для провайдера поля
-      let specificFields: string[] = [];
-      let specificValues: any[] = [];
-
-      switch (instanceData.provider) {
-        case 'telegram':
-          const telegramData = instanceData as TelegramInstanceData;
-          specificFields = ['bot_token', 'bot_username', 'webhook_url', 'webhook_secret'];
-          specificValues = [
-            telegramData.bot_token,
-            telegramData.bot_username,
-            telegramData.webhook_url,
-            telegramData.webhook_secret,
-          ];
-          break;
-
-        case 'whatsapp-official':
-          const whatsappOfficialData = instanceData as WhatsAppOfficialInstanceData;
-          specificFields = [
-            'phone_number_id',
-            'access_token',
-            'webhook_verify_token',
-            'business_account_id',
-            'api_version',
-          ];
-          specificValues = [
-            whatsappOfficialData.phone_number_id,
-            whatsappOfficialData.access_token,
-            whatsappOfficialData.webhook_verify_token,
-            whatsappOfficialData.business_account_id,
-            whatsappOfficialData.api_version || 'v18.0',
-          ];
-          break;
-
-        case 'facebook-messenger':
-          const messengerData = instanceData as FacebookMessengerInstanceData;
-          specificFields = [
-            'page_access_token',
-            'page_id',
-            'app_secret',
-            'webhook_verify_token',
-            'api_version',
-          ];
-          specificValues = [
-            messengerData.page_access_token,
-            messengerData.page_id,
-            messengerData.app_secret,
-            messengerData.webhook_verify_token,
-            messengerData.api_version || 'v18.0',
-          ];
-          break;
-
-        case 'instagram':
-          const instagramData = instanceData as InstagramInstanceData;
-          specificFields = [
-            'access_token',
-            'instagram_user_id',
-            'app_secret',
-            'webhook_verify_token',
-          ];
-          specificValues = [
-            instagramData.access_token,
-            instagramData.instagram_user_id,
-            instagramData.app_secret,
-            instagramData.webhook_verify_token,
-          ];
-          break;
-
-        case 'slack':
-          const slackData = instanceData as SlackInstanceData;
-          specificFields = [
-            'bot_token',
-            'app_token',
-            'signing_secret',
-            'team_id',
-            'socket_mode',
-            'webhook_url',
-          ];
-          specificValues = [
-            slackData.bot_token,
-            slackData.app_token,
-            slackData.signing_secret,
-            slackData.team_id,
-            slackData.socket_mode || false,
-            slackData.webhook_url,
-          ];
-          break;
-
-        case 'discord':
-          const discordData = instanceData as DiscordInstanceData;
-          specificFields = ['bot_token', 'client_id', 'guild_id', 'application_id', 'intents'];
-          specificValues = [
-            discordData.bot_token,
-            discordData.client_id,
-            discordData.guild_id,
-            discordData.application_id,
-            JSON.stringify(discordData.intents || []),
-          ];
-          break;
-
-        case 'whatsapp':
-        case 'whatsappweb':
-          const whatsappWebData = instanceData as WhatsAppWebInstanceData;
-          specificFields = ['last_qr_generated_at', 'whatsapp_state', 'token'];
-          specificValues = [
-            whatsappWebData.last_qr_generated_at,
-            whatsappWebData.whatsapp_state,
-            whatsappWebData.token,
-          ];
-          break;
+      if (!tableName) {
+        throw new Error(`Unsupported provider: ${instanceData.provider}`);
       }
 
-      const allFields = [...baseFields, ...specificFields];
-      const allValues = [...baseValues, ...specificValues];
-      const placeholders = allFields.map((_, index) => `$${index + 1}`).join(', ');
-
       const query = `
-        INSERT INTO public.${tableName} (${allFields.join(', ')})
-        VALUES (${placeholders})
-        RETURNING id
+        INSERT INTO ${this.schema}.${tableName} (
+          id, account, status, phone, api_key, token, 
+          qr_code, webhook_url, api_webhook_schema, mcp_schema, 
+          auth_status, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()
+        ) RETURNING *
       `;
 
-      const result = await this.pool.query(query, allValues);
-      logger.info(`Created ${instanceData.provider} instance: ${id}`);
+      const values = [
+        instanceId,
+        instanceData.account,
+        instanceData.status || 'disconnected',
+        instanceData.phone,
+        instanceData.api_key,
+        instanceData.token,
+        instanceData.qr_code,
+        instanceData.webhook_url,
+        instanceData.api_webhook_schema ? JSON.stringify(instanceData.api_webhook_schema) : null,
+        instanceData.mcp_schema ? JSON.stringify(instanceData.mcp_schema) : null,
+        instanceData.auth_status || 'pending',
+      ];
 
-      return result.rows[0].id;
+      const result = await this.pool.query(query, values);
+      const createdInstance = result.rows[0];
+
+      logger.info('Instance created successfully', {
+        instanceId,
+        provider: instanceData.provider,
+        status: createdInstance.status,
+      });
+
+      return this.mapDbRowToInstanceData(createdInstance, instanceData.provider as MessengerProvider);
     } catch (error) {
-      logger.error(`Failed to create ${instanceData.provider} instance:`, error);
-      throw error;
+      logger.error('Failed to create instance', {
+        error: error instanceof Error ? error.message : String(error),
+        provider: instanceData.provider,
+        instanceData,
+      });
+      return null;
     }
   }
 
@@ -340,7 +219,7 @@ export class ProviderDatabaseService {
         return null;
       }
 
-      return this.mapRowToInstanceData(result.rows[0], provider);
+      return this.mapDbRowToInstanceData(result.rows[0], provider);
     } catch (error) {
       logger.error(`Failed to get instance ${id}:`, error);
       throw error;
@@ -356,7 +235,7 @@ export class ProviderDatabaseService {
       const query = `SELECT * FROM public.${tableName} ORDER BY created_at DESC`;
       const result = await this.pool.query(query);
 
-      return result.rows.map(row => this.mapRowToInstanceData(row, provider));
+      return result.rows.map(row => this.mapDbRowToInstanceData(row, provider));
     } catch (error) {
       logger.error(`Failed to get ${provider} instances:`, error);
       throw error;
@@ -385,7 +264,7 @@ export class ProviderDatabaseService {
         const result = await this.pool.query(query, [userId]);
 
         for (const row of result.rows) {
-          instances.push(this.mapRowToInstanceData(row, provider));
+          instances.push(this.mapDbRowToInstanceData(row, provider));
         }
       }
 
@@ -399,70 +278,91 @@ export class ProviderDatabaseService {
   /**
    * Обновляет экземпляр провайдера
    */
-  async updateInstance(id: string, updates: Partial<ProviderInstanceData>): Promise<void> {
+  async updateInstance(
+    instanceId: string,
+    provider: string,
+    updateData: Partial<InstanceData>,
+  ): Promise<InstanceData | null> {
     try {
-      // Сначала определяем провайдер
-      const existingInstance = await this.getInstance(id);
-      if (!existingInstance) {
-        throw new Error(`Instance ${id} not found`);
+      const tableName = this.getTableName(provider as MessengerProvider);
+
+      if (!tableName) {
+        throw new Error(`Unsupported provider: ${provider}`);
       }
 
-      const tableName = this.getTableName(existingInstance.provider);
       const updateFields: string[] = [];
-      const updateValues: any[] = [];
+      const values: any[] = [];
       let paramIndex = 1;
 
-      // Обновляем базовые поля
-      const baseUpdatableFields = [
-        'user_id',
-        'port_api',
-        'port_mcp',
+      // Обновляемые поля (убрал agent_id, agno_enable)
+      const fields = [
+        'account',
+        'status', 
+        'phone',
+        'api_key',
+        'token',
+        'qr_code',
+        'webhook_url',
         'api_webhook_schema',
         'mcp_schema',
-        'agent_id',
-        'agno_enable',
-        'stream',
         'auth_status',
-        'account',
       ];
 
-      for (const field of baseUpdatableFields) {
-        if (updates[field as keyof ProviderInstanceData] !== undefined) {
+      for (const field of fields) {
+        if (updateData[field as keyof InstanceData] !== undefined) {
           updateFields.push(`${field} = $${paramIndex}`);
-          let value = updates[field as keyof ProviderInstanceData];
-
-          // JSON поля нужно stringify
-          if (field === 'api_webhook_schema' || field === 'mcp_schema') {
+          let value = updateData[field as keyof InstanceData];
+          
+          // Сериализуем JSON поля
+          if ((field === 'api_webhook_schema' || field === 'mcp_schema') && value) {
             value = JSON.stringify(value);
           }
-
-          updateValues.push(value);
+          
+          values.push(value);
           paramIndex++;
         }
       }
 
-      // Добавляем updated_at
-      updateFields.push(`updated_at = NOW()`);
-
-      if (updateFields.length === 1) {
-        // Только updated_at
-        return;
+      if (updateFields.length === 0) {
+        logger.warn('No fields to update', { instanceId, provider });
+        return await this.getInstance(instanceId, provider as MessengerProvider);
       }
 
-      // ID для WHERE условия
-      updateValues.push(id);
+      updateFields.push(`updated_at = NOW()`);
+      values.push(instanceId);
 
       const query = `
-        UPDATE public.${tableName} 
+        UPDATE ${this.schema}.${tableName} 
         SET ${updateFields.join(', ')}
         WHERE id = $${paramIndex}
+        RETURNING *
       `;
 
-      await this.pool.query(query, updateValues);
-      logger.info(`Updated ${existingInstance.provider} instance: ${id}`);
+      const result = await this.pool.query(query, values);
+
+      if (result.rows.length === 0) {
+        logger.warn('Instance not found for update', { instanceId, provider });
+        return null;
+      }
+
+      const updatedInstance = result.rows[0];
+
+      logger.info('Instance updated successfully', {
+        instanceId,
+        provider,
+        status: updatedInstance.status,
+        updatedFields: updateFields.slice(0, -1), // Exclude updated_at
+      });
+
+      return this.mapDbRowToInstanceData(updatedInstance, provider as MessengerProvider);
     } catch (error) {
-      logger.error(`Failed to update instance ${id}:`, error);
-      throw error;
+      logger.error('Failed to update instance', {
+        error: error instanceof Error ? error.message : String(error),
+        instanceId,
+        provider,
+        updateData,
+      });
+      return null;
     }
   }
 
@@ -478,7 +378,7 @@ export class ProviderDatabaseService {
         return;
       }
 
-      const tableName = this.getTableName(existingInstance.provider);
+      const tableName = this.getTableName(existingInstance.provider as MessengerProvider);
       const query = `DELETE FROM public.${tableName} WHERE id = $1`;
 
       await this.pool.query(query, [id]);
@@ -492,25 +392,23 @@ export class ProviderDatabaseService {
   /**
    * Конвертирует строку из БД в InstanceData
    */
-  private mapRowToInstanceData(row: any, provider: MessengerProvider): ProviderInstanceData {
-    const baseData: BaseInstanceData = {
+  private mapDbRowToInstanceData(row: any, provider: MessengerProvider): ProviderInstanceData {
+    const baseData: InstanceData = {
       id: row.id,
-      user_id: row.user_id,
       provider: provider as any,
-      type_instance: row.type_instance,
-      port_api: row.port_api,
-      port_mcp: row.port_mcp,
+      account: row.account,
+      status: row.status,
+      phone: row.phone,
       api_key: row.api_key,
-      api_key_generated_at: row.api_key_generated_at,
-      api_webhook_schema: row.api_webhook_schema,
-      mcp_schema: row.mcp_schema,
-      agent_id: row.agent_id,
-      agno_enable: row.agno_enable,
-      stream: row.stream,
+      token: row.token,
+      qr_code: row.qr_code,
+      webhook_url: row.webhook_url,
+      api_webhook_schema: row.api_webhook_schema ? JSON.parse(row.api_webhook_schema) : null,
+      mcp_schema: row.mcp_schema ? JSON.parse(row.mcp_schema) : null,
+      auth_status: row.auth_status,
+      last_qr_update: row.last_qr_update,
       created_at: row.created_at,
       updated_at: row.updated_at,
-      auth_status: row.auth_status,
-      account: row.account,
     };
 
     switch (provider) {
@@ -520,7 +418,6 @@ export class ProviderDatabaseService {
           provider: 'telegram',
           bot_token: row.bot_token,
           bot_username: row.bot_username,
-          webhook_url: row.webhook_url,
           webhook_secret: row.webhook_secret,
         } as TelegramInstanceData;
 
@@ -565,7 +462,6 @@ export class ProviderDatabaseService {
           signing_secret: row.signing_secret,
           team_id: row.team_id,
           socket_mode: row.socket_mode,
-          webhook_url: row.webhook_url,
         } as SlackInstanceData;
 
       case 'discord':
@@ -587,7 +483,6 @@ export class ProviderDatabaseService {
           provider: 'whatsappweb',
           last_qr_generated_at: row.last_qr_generated_at,
           whatsapp_state: row.whatsapp_state,
-          token: row.token,
         } as WhatsAppWebInstanceData;
     }
   }

@@ -1,23 +1,20 @@
 export interface MessageInstance {
   id: string; // UUID
-  user_id: string; // ID пользователя
-  provider: string; // whatsappweb, telegram
-  type_instance: string[]; // ['api'] или ['mcp'] или ['api', 'mcp']
+  user_id?: string;
+  provider: string;
+  type_instance: string[];
   port_api?: number; // Назначается при создании
   port_mcp?: number; // Назначается при создании
-  api_key?: string; // Всегда равен instance.id
-  token?: string; // Bot token для Telegram
+  api_webhook_schema?: any;
+  mcp_schema?: any;
+  api_key?: string; // Для WhatsApp
+  token?: string; // Для Telegram
   api_key_generated_at?: Date; // Время генерации API ключа
   last_qr_generated_at?: Date; // Время последнего QR кода
-  api_webhook_schema: object; // По умолчанию {}
-  mcp_schema: object; // По умолчанию {}
-  agent_id?: string; // ID агента
-  agno_enable?: boolean; // Включение Agno (по умолчанию true)
-  stream?: boolean; // Поддержка стриминга (по умолчанию false)
+  auth_status?: string; // Статус аутентификации
   created_at?: Date;
   updated_at?: Date;
-  auth_status?: string; // Статус аутентификации (по умолчанию 'pending')
-  account?: string; // Информация об аккаунте (номер телефона для WhatsApp, имя бота для Telegram)
+  account?: string; // Информация об аккаунте (номер телефона, имя пользователя и т.д.)
   whatsapp_state?: string; // Состояние WhatsApp
 
   // Дополнительные поля для интеграции с оперативной памятью

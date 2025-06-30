@@ -199,7 +199,7 @@ export class MultiProviderService extends EventEmitter {
         await provider.initialize();
 
         // Обновляем статус в БД
-        await this.providerDatabaseService.updateInstance(instanceId, {
+        await this.providerDatabaseService.updateInstance(instanceId, config.provider, {
           auth_status: 'ready',
         });
 
@@ -224,7 +224,8 @@ export class MultiProviderService extends EventEmitter {
   private mapConfigToInstanceData(_config: ProviderConfig): any {
     // Базовые поля, общие для всех провайдеров
     const baseData = {
-      agno_enable: true,
+      // Удаляю старые поля Agno - теперь всё в agno_config
+      // agno_enable: true,
       stream: false,
     };
 
@@ -428,7 +429,7 @@ export class MultiProviderService extends EventEmitter {
             this.providers.set(instance.instance_id, provider);
             await provider.initialize();
 
-            await this.providerDatabaseService.updateInstance(instance.instance_id, {
+            await this.providerDatabaseService.updateInstance(instance.instance_id, instance.provider_type, {
               auth_status: 'ready',
             });
 
@@ -439,7 +440,7 @@ export class MultiProviderService extends EventEmitter {
         } catch (error) {
           logger.error(`Failed to load instance ${instance.instance_id}:`, error);
 
-          await this.providerDatabaseService.updateInstance(instance.instance_id, {
+          await this.providerDatabaseService.updateInstance(instance.instance_id, instance.provider_type, {
             auth_status: 'error',
           });
         }
