@@ -157,7 +157,7 @@ TELEGRAM_BOT_TOKEN=YOUR_BOT_TOKEN_HERE
 TELEGRAM_ENABLED=false
 
 # AI интеграция (Agno Agent System)
-AGNO_API_BASE_URL=https://2367-45-86-83-173.ngrok-free.app
+AGNO_API_BASE_URL=https://crafty-v0-0-1.onrender.com
 AGNO_API_TIMEOUT=10000
 AGNO_ENABLED=false
 

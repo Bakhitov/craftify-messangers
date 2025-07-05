@@ -7,6 +7,7 @@ export interface MessageInstance {
   port_mcp?: number; // Назначается при создании
   api_webhook_schema?: any;
   mcp_schema?: any;
+  agno_config?: any; // Конфигурация Agno в формате JSON
   api_key?: string; // Для WhatsApp
   token?: string; // Для Telegram
   api_key_generated_at?: Date; // Время генерации API ключа

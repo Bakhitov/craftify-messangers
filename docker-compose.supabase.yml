@@ -20,6 +20,7 @@ services:
       DATABASE_SCHEMA: public
       DATABASE_SSL: ${DATABASE_SSL:-true}
       USE_SUPABASE: ${USE_SUPABASE:-true}
+      DOCKER_CONTAINER: true
       
       # Instance Manager
       INSTANCE_MANAGER_PORT: ${INSTANCE_MANAGER_PORT:-3000}

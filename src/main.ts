@@ -468,7 +468,7 @@ async function startWhatsAppApiServer(
   logger.info(`API endpoints: http://localhost:${port}/api/v1/*`);
 
   app.use(errorHandler);
-  app.listen(port, () => {
+  app.listen(port, '0.0.0.0', () => {
     logger.info(`WhatsApp Web Client API started successfully on port ${port}`);
   });
 
@@ -648,7 +648,7 @@ async function startTelegramApiServer(
 
   logger.info(`Starting Express server on port ${port}...`);
 
-  const server = app.listen(port, () => {
+  const server = app.listen(port, '0.0.0.0', () => {
     logger.info(`Telegram API server started on port ${port}`);
     logger.info(`Health endpoint: http://localhost:${port}/api/v1/telegram/health`);
     logger.info(`API endpoints: http://localhost:${port}/api/v1/telegram/*`);

@@ -68,6 +68,19 @@ export class InstanceMonitorService {
         };
       }
 
+      // Проверяем доступность API перед попыткой подключения
+      const apiAccessible = await ConnectionUtils.isApiAccessible(instance.id, instance.port_api);
+      if (!apiAccessible) {
+        instanceMemoryService.updateStatus(instance.id, 'start', {
+          source: 'instance-monitor.service.ts:getAuthStatus',
+          message: `API not accessible on port ${instance.port_api}, container may be starting`,
+        });
+        return {
+          auth_status: 'pending',
+          is_ready_for_messages: false,
+        };
+      }
+
       // Обновляем статус - API ключ готов
       instanceMemoryService.updateStatus(instance.id, 'start', {
         source: 'instance-monitor.service.ts:getAuthStatus',
@@ -192,11 +205,52 @@ export class InstanceMonitorService {
         last_seen: new Date().toISOString(),
       };
     } catch (error) {
-      logger.error(`Failed to get auth status for instance ${instance.id}`, error);
-      instanceMemoryService.registerError(instance.id, `Auth status check failed: ${error}`, {
+      // Более детальная обработка ошибок
+      let errorMessage = 'Unknown error';
+      let shouldReturnPending = false;
+
+      if (error instanceof Error) {
+        if (error.message.includes('ECONNREFUSED')) {
+          errorMessage = 'Connection refused - API server may be starting';
+          shouldReturnPending = true;
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Request timeout - API server may be overloaded';
+          shouldReturnPending = true;
+        } else if (error.message.includes('ENOTFOUND')) {
+          errorMessage = 'Host not found - networking issue';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      logger.error(`Failed to get auth status for instance ${instance.id}: ${errorMessage}`, error);
+      
+      instanceMemoryService.registerError(
+        instance.id,
+        `Auth status check failed: ${errorMessage}`,
+        {
+          source: 'instance-monitor.service.ts:getAuthStatus',
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+      );
+
+      // Если это временная проблема подключения, возвращаем pending вместо failed
+      if (shouldReturnPending) {
+        instanceMemoryService.updateStatus(instance.id, 'start', {
+          source: 'instance-monitor.service.ts:getAuthStatus',
+          message: errorMessage,
+        });
+        return {
+          auth_status: 'pending',
+          is_ready_for_messages: false,
+        };
+      }
+
+      instanceMemoryService.updateStatus(instance.id, 'stopped', {
         source: 'instance-monitor.service.ts:getAuthStatus',
-        stack: error instanceof Error ? error.stack : undefined,
+        message: errorMessage,
       });
+
       return {
         auth_status: 'failed',
         is_ready_for_messages: false,
@@ -496,13 +550,28 @@ export class InstanceMonitorService {
         for (const instance of instances) {
           try {
             if (instance.type_instance.includes('api') && instance.port_api && instance.api_key) {
-              // Пропускаем экземпляры со статусом 'failed', которые обновлялись недавно (менее 5 минут назад)
-              // чтобы не создавать лишний шум в логах
+              // Более гибкая логика пропуска экземпляров
               if (instance.auth_status === 'failed' && instance.updated_at) {
                 const timeSinceUpdate = Date.now() - new Date(instance.updated_at).getTime();
                 const fiveMinutesMs = 5 * 60 * 1000;
 
+                // Пропускаем экземпляры со статусом 'failed', которые обновлялись недавно
                 if (timeSinceUpdate < fiveMinutesMs) {
+                  skippedCount++;
+                  continue;
+                }
+              }
+
+              // Пропускаем экземпляры, которые были созданы менее 2 минут назад
+              // чтобы дать им время на запуск
+              if (instance.created_at) {
+                const timeSinceCreation = Date.now() - new Date(instance.created_at).getTime();
+                const twoMinutesMs = 2 * 60 * 1000;
+
+                                 if (timeSinceCreation < twoMinutesMs && instance.auth_status === 'pending') {
+                   logger.debug(
+                     `Skipping recently created instance ${instance.id} (${Math.round(timeSinceCreation / 1000)}s old)`,
+                   );
                   skippedCount++;
                   continue;
                 }
@@ -520,7 +589,7 @@ export class InstanceMonitorService {
 
         if (updatedCount > 0 || skippedCount > 0) {
           logger.info(
-            `Auth status update: checked ${updatedCount} instances, skipped ${skippedCount} recently failed`,
+            `Auth status update: checked ${updatedCount} instances, skipped ${skippedCount} recently failed/created`,
           );
         }
       } catch (error) {

@@ -9,6 +9,7 @@ import { MessageStorageService } from './services/message-storage.service';
 import { instanceMemoryService } from './instance-manager/services/instance-memory.service';
 import { createPool, getDatabaseConfig } from './config/database.config';
 import { AgnoIntegrationService, AgnoMediaFile } from './services/agno-integration.service';
+import crypto from 'crypto';
 
 // Configuration interface
 export interface WhatsAppConfig {
@@ -109,10 +110,6 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
   // Sets для отслеживания сообщений, которые не должны обрабатываться как device messages
   const agnoMessageIds = new Set<string>();
   const apiMessageIds = new Set<string>();
-  
-  // Счетчики активных временных ID для быстрой проверки
-  let activeTempAgnoCount = 0;
-  let activeTempApiCount = 0;
 
   logger.debug('WhatsApp client configuration', {
     authDataPath,
@@ -426,11 +423,11 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
           // Генерируем session_id детерминированно из agent_id + chat_id
           const chatId = message.from;
           const sessionId = generateSessionId(agnoConfig.agent_id, chatId);
-          
+
           // Обновляем конфигурацию с сгенерированным session_id
           const configWithSession = {
             ...agnoConfig,
-            sessionId: sessionId
+            sessionId: sessionId,
           };
 
           // Подготавливаем файлы для отправки в Agno если есть медиа
@@ -445,10 +442,10 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
                 // Определяем имя файла
                 const extension = media.mimetype.split('/')[1] || 'bin';
                 const filename = `media_${message.id._serialized.replace(/[^a-zA-Z0-9]/g, '_')}.${extension}`;
-                
+
                 // Конвертируем base64 в Buffer
                 const buffer = Buffer.from(media.data, 'base64');
-                
+
                 agnoFiles.push({
                   buffer,
                   filename,
@@ -457,7 +454,9 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
 
                 // Добавляем описание файла к тексту сообщения
                 const fileDescription = `[${message.type.toUpperCase()}: ${filename}]`;
-                messageText = message.body ? `${message.body}\n\n${fileDescription}` : fileDescription;
+                messageText = message.body
+                  ? `${message.body}\n\n${fileDescription}`
+                  : fileDescription;
 
                 logger.debug('Media file prepared for Agno', {
                   messageId: message.id._serialized,
@@ -484,30 +483,36 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
           // Если получили ответ от агента
           const responseMessage = agnoResponse?.content || agnoResponse?.message;
           if (responseMessage) {
-            // Отправляем ответ пользователю с предварительным исключением
+            // Отправляем ответ пользователю (упрощенная логика как в Telegram)
             let sentMessage;
             try {
-              // Пытаемся использовать новый метод с отслеживанием источника
-              if (typeof (client as any).sendMessageWithSource === 'function') {
-                sentMessage = await (client as any).sendMessageWithSource(message.from, responseMessage, 'agno');
-              } else {
-                // Fallback на обычный метод если новый не доступен
-                logger.warn('sendMessageWithSource not available for Agno, using fallback');
-                sentMessage = await client.sendMessage(message.from, responseMessage);
-                // Добавляем в исключения вручную
+              // Используем прямую отправку сообщения
+              sentMessage = await client.sendMessage(message.from, responseMessage);
+
+              // Добавляем ID сообщения в исключения для предотвращения дублирования
+              if (sentMessage && sentMessage.id && sentMessage.id._serialized) {
                 (client as any).addAgnoMessageId(sentMessage.id._serialized);
+                logger.debug('Agno message sent and added to exclusion set', {
+                  messageId: sentMessage.id._serialized,
+                  agnoSetSize: agnoMessageIds.size,
+                });
               }
             } catch (error) {
-              // Если новый метод не работает, используем старый
-              logger.warn('sendMessageWithSource failed for Agno, using fallback', {
+              logger.error('Failed to send Agno response', {
                 error: error instanceof Error ? error.message : String(error),
+                agentId: agnoConfig.agent_id,
+                responseLength: responseMessage.length,
               });
-              sentMessage = await client.sendMessage(message.from, responseMessage);
-              (client as any).addAgnoMessageId(sentMessage.id._serialized);
+              sentMessage = null;
             }
 
             // Сохраняем ответ агента в БД как исходящее сообщение
-            if (config.messageStorageService) {
+            if (
+              config.messageStorageService &&
+              sentMessage &&
+              sentMessage.id &&
+              sentMessage.id._serialized
+            ) {
               const isGroup = message.from.includes('@g.us');
               await config.messageStorageService.saveMessage({
                 instance_id: config.instanceId,
@@ -527,12 +532,20 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
               });
             }
 
-            logger.debug('Agno response sent and saved', {
-              agentId: agnoConfig.agent_id,
-              responseLength: responseMessage.length,
-              messageId: sentMessage.id._serialized,
-              runId: agnoResponse.run_id,
-            });
+            if (sentMessage && sentMessage.id && sentMessage.id._serialized) {
+              logger.debug('Agno response sent and saved', {
+                agentId: agnoConfig.agent_id,
+                responseLength: responseMessage.length,
+                messageId: sentMessage.id._serialized,
+                runId: agnoResponse.run_id,
+              });
+            } else {
+              logger.error('Failed to send Agno response - invalid sentMessage', {
+                agentId: agnoConfig.agent_id,
+                responseLength: responseMessage.length,
+                sentMessage,
+              });
+            }
           }
         }
       } catch (error) {
@@ -548,48 +561,6 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
       return;
     }
 
-    // Быстрая проверка активных временных ID через счетчики
-    const hasActiveTempAgno = activeTempAgnoCount > 0;
-    const hasActiveTempApi = activeTempApiCount > 0;
-    
-    logger.debug('message_create handler triggered', {
-      messageId: message.id._serialized,
-      agnoSetSize: agnoMessageIds.size,
-      apiSetSize: apiMessageIds.size,
-      isInAgnoSet: agnoMessageIds.has(message.id._serialized),
-      isInApiSet: apiMessageIds.has(message.id._serialized),
-      activeTempAgnoCount,
-      activeTempApiCount,
-      hasActiveTempAgno,
-      hasActiveTempApi,
-    });
-
-    // Пропускаем сообщения уже сохраненные как ответы Agno
-    if (agnoMessageIds.has(message.id._serialized)) {
-      logger.debug('Skipping message already saved as Agno response', {
-        messageId: message.id._serialized,
-      });
-      return;
-    }
-
-    // Пропускаем сообщения уже сохраненные через API
-    if (apiMessageIds.has(message.id._serialized)) {
-      logger.debug('Skipping message already saved via API', {
-        messageId: message.id._serialized,
-      });
-      return;
-    }
-
-    // Пропускаем если есть активные временные ID (сообщение отправляется сейчас)
-    if (hasActiveTempAgno || hasActiveTempApi) {
-      logger.debug('Skipping message - temp ID active (Agno/API message being sent)', {
-        messageId: message.id._serialized,
-        hasActiveTempAgno,
-        hasActiveTempApi,
-      });
-      return;
-    }
-
     const contact = await message.getContact();
     client.lastActivity = new Date();
 
@@ -599,11 +570,6 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
       messageLength: message.body.length,
       messageId: message.id._serialized,
     });
-
-    // Обновляем активность в памяти
-    if (config.instanceId) {
-      instanceMemoryService.updateMessageStats(config.instanceId, 'sent');
-    }
 
     // Сохраняем исходящее сообщение в базу данных
     if (config.messageStorageService && config.instanceId) {
@@ -715,88 +681,20 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
   });
 
   // Добавляем методы для отслеживания сообщений
-  (client as any).addAgnoMessageId = (messageId: string) => {
+  (client as any).addAgnoMessageId = (messageId: string): void => {
     agnoMessageIds.add(messageId);
     logger.debug('Added message to agnoMessageIds set', {
       messageId,
       setSize: agnoMessageIds.size,
     });
   };
-  
-  (client as any).addApiMessageId = (messageId: string) => {
+
+  (client as any).addApiMessageId = (messageId: string): void => {
     apiMessageIds.add(messageId);
     logger.debug('Added message to apiMessageIds set', {
       messageId,
       setSize: apiMessageIds.size,
     });
-  };
-
-  // Hook для перехвата sendMessage и предварительного добавления в исключения
-  const originalSendMessage = client.sendMessage.bind(client);
-  (client as any).sendMessageWithSource = async (chatId: string, content: any, source: 'agno' | 'api') => {
-    // Проверяем что оригинальный метод существует
-    if (typeof originalSendMessage !== 'function') {
-      throw new Error('Original sendMessage method not available');
-    }
-    
-    // Генерируем уникальный временный ID
-    const tempId = `temp_${source}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    if (source === 'agno') {
-      agnoMessageIds.add(tempId);
-      activeTempAgnoCount++;
-    } else if (source === 'api') {
-      apiMessageIds.add(tempId);
-      activeTempApiCount++;
-    }
-    
-    try {
-      // Используем оригинальный метод WhatsApp Web.js
-      const result = await originalSendMessage(chatId, content);
-      
-      // Проверяем что результат содержит ID
-      if (!result || !result.id || !result.id._serialized) {
-        throw new Error('Invalid message result from WhatsApp Web.js');
-      }
-      
-      // Заменяем временный ID на реальный
-      if (source === 'agno') {
-        agnoMessageIds.delete(tempId);
-        activeTempAgnoCount--;
-        agnoMessageIds.add(result.id._serialized);
-        logger.debug('Replaced temp agno ID with real ID', {
-          tempId,
-          realId: result.id._serialized,
-        });
-      } else if (source === 'api') {
-        apiMessageIds.delete(tempId);
-        activeTempApiCount--;
-        apiMessageIds.add(result.id._serialized);
-        logger.debug('Replaced temp api ID with real ID', {
-          tempId,
-          realId: result.id._serialized,
-        });
-      }
-      
-      return result;
-    } catch (error) {
-      // Убираем временный ID в случае ошибки
-      if (source === 'agno') {
-        agnoMessageIds.delete(tempId);
-        activeTempAgnoCount--;
-      } else if (source === 'api') {
-        apiMessageIds.delete(tempId);
-        activeTempApiCount--;
-      }
-      
-      logger.error('Error in sendMessageWithSource', {
-        source,
-        tempId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      
-      throw error;
-    }
   };
 
   return client;
@@ -812,20 +710,19 @@ function generateSessionId(agentId?: string, chatId?: string): string | undefine
   if (!chatId) {
     return undefined;
   }
-  
-  const crypto = require('crypto');
+
   const sessionString = agentId ? `session:${agentId}:${chatId}` : `session:${chatId}`;
   const hash = crypto.createHash('sha256').update(sessionString).digest('hex');
-  
+
   // Форматируем как UUID v4
   const uuid = [
     hash.substr(0, 8),
     hash.substr(8, 4),
     '4' + hash.substr(13, 3), // версия 4
     ((parseInt(hash.substr(16, 1), 16) & 0x3) | 0x8).toString(16) + hash.substr(17, 3), // вариант
-    hash.substr(20, 12)
+    hash.substr(20, 12),
   ].join('-');
-  
+
   return uuid;
 }
 

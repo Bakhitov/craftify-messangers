@@ -23,6 +23,16 @@ import mime from 'mime-types';
 import { ApiError } from './errors/api-error';
 import { MessageStorageService } from './services/message-storage.service';
 
+// Интерфейсы для типизации WhatsApp API результатов
+interface RawChatData {
+  groupMetadata?: {
+    subject?: string;
+    [key: string]: unknown;
+  };
+  isGroup?: boolean;
+  [key: string]: unknown;
+}
+
 export function timestampToIso(timestamp: number): string {
   return new Date(timestamp * 1000).toISOString();
 }
@@ -216,27 +226,20 @@ export class WhatsAppService {
       // Send the message with API source tracking
       let result;
       try {
-        // Пытаемся использовать новый метод с отслеживанием источника
-        if (typeof (this.client as any).sendMessageWithSource === 'function') {
-          result = await (this.client as any).sendMessageWithSource(chatId, message, 'api');
-        } else {
-          // Fallback на обычный метод если новый не доступен
-          logger.warn('sendMessageWithSource not available, using fallback');
-          result = await this.client.sendMessage(chatId, message);
-          // Добавляем в исключения вручную
-          if ((this.client as any).addApiMessageId) {
-            (this.client as any).addApiMessageId(result.id._serialized);
-          }
+        // Используем прямую отправку сообщения
+        result = await this.client.sendMessage(chatId, message);
+
+        // Добавляем в исключения для предотвращения дублирования
+        if (this.client.addApiMessageId && result && result.id && result.id._serialized) {
+          this.client.addApiMessageId(result.id._serialized);
         }
       } catch (error) {
-        // Если новый метод не работает, используем старый
-        logger.warn('sendMessageWithSource failed, using fallback', {
+        logger.error('Failed to send API message', {
           error: error instanceof Error ? error.message : String(error),
+          to: number,
+          messageLength: message.length,
         });
-        result = await this.client.sendMessage(chatId, message);
-        if ((this.client as any).addApiMessageId) {
-          (this.client as any).addApiMessageId(result.id._serialized);
-        }
+        throw error;
       }
 
       logger.debug('Outgoing message sent', {
@@ -306,7 +309,7 @@ export class WhatsAppService {
       } else if (result && typeof result === 'object') {
         // Safely access properties
         groupId = result.gid && result.gid._serialized ? result.gid._serialized : '';
-        inviteCode = (result as any).inviteCode;
+        inviteCode = (result as { inviteCode?: string }).inviteCode;
       }
 
       return {
@@ -426,27 +429,20 @@ export class WhatsAppService {
       // Send the message with API source tracking
       let result;
       try {
-        // Пытаемся использовать новый метод с отслеживанием источника
-        if (typeof (this.client as any).sendMessageWithSource === 'function') {
-          result = await (this.client as any).sendMessageWithSource(formattedGroupId, message, 'api');
-        } else {
-          // Fallback на обычный метод если новый не доступен
-          logger.warn('sendMessageWithSource not available for group, using fallback');
-          result = await this.client.sendMessage(formattedGroupId, message);
-          // Добавляем в исключения вручную
-          if ((this.client as any).addApiMessageId) {
-            (this.client as any).addApiMessageId(result.id._serialized);
-          }
+        // Используем прямую отправку сообщения
+        result = await this.client.sendMessage(formattedGroupId, message);
+
+        // Добавляем в исключения для предотвращения дублирования
+        if (this.client.addApiMessageId && result && result.id && result.id._serialized) {
+          this.client.addApiMessageId(result.id._serialized);
         }
       } catch (error) {
-        // Если новый метод не работает, используем старый
-        logger.warn('sendMessageWithSource failed for group, using fallback', {
+        logger.error('Failed to send API group message', {
           error: error instanceof Error ? error.message : String(error),
+          groupId: groupId,
+          messageLength: message.length,
         });
-        result = await this.client.sendMessage(formattedGroupId, message);
-        if ((this.client as any).addApiMessageId) {
-          (this.client as any).addApiMessageId(result.id._serialized);
-        }
+        throw error;
       }
 
       logger.debug(`Outgoing group message to ${groupId}: ${message}`);
@@ -505,8 +501,8 @@ export class WhatsAppService {
         return await window.WWebJS.getChats();
       });
       const groupChats: GroupChat[] = rawChats
-        .filter((chat: any) => chat.groupMetadata)
-        .map((chat: any) => {
+        .filter((chat: RawChatData) => chat.groupMetadata)
+        .map((chat: RawChatData) => {
           chat.isGroup = true;
           return new _GroupChat(this.client, chat);
         });
@@ -514,20 +510,26 @@ export class WhatsAppService {
       logger.info(`Found ${groupChats.length} groups`);
 
       const groups: GroupResponse[] = await Promise.all(
-        groupChats.map(async chat => ({
-          id: chat.id._serialized,
-          name: chat.name,
-          description: ((chat as any).groupMetadata || {}).subject || '',
-          participants: await Promise.all(
-            chat.participants.map(async participant => ({
-              id: participant.id._serialized,
-              number: participant.id.user,
-              isAdmin: participant.isAdmin,
-              name: await this.getUserName(participant.id._serialized),
-            })),
-          ),
-          createdAt: chat.timestamp ? timestampToIso(chat.timestamp) : new Date().toISOString(),
-        })),
+        groupChats.map(async chat => {
+          // Безопасное получение описания группы
+          const chatWithMeta = chat as unknown as { groupMetadata?: { subject?: string } };
+          const description = chatWithMeta.groupMetadata?.subject || '';
+
+          return {
+            id: chat.id._serialized,
+            name: chat.name,
+            description,
+            participants: await Promise.all(
+              chat.participants.map(async participant => ({
+                id: participant.id._serialized,
+                number: participant.id.user,
+                isAdmin: participant.isAdmin,
+                name: await this.getUserName(participant.id._serialized),
+              })),
+            ),
+            createdAt: chat.timestamp ? timestampToIso(chat.timestamp) : new Date().toISOString(),
+          };
+        }),
       );
 
       return groups;
@@ -552,10 +554,14 @@ export class WhatsAppService {
       // It's not possible to use getChatById because WhatsApp Client is not setting the isGroup property
       const chat = await this.getRawGroup(groupId);
 
+      // Безопасное получение описания группы
+      const chatWithMeta = chat as unknown as { groupMetadata?: { subject?: string } };
+      const description = chatWithMeta.groupMetadata?.subject || '';
+
       return {
         id: chat.id._serialized,
         name: chat.name,
-        description: ((chat as any).groupMetadata || {}).subject || '',
+        description,
         participants: await Promise.all(
           chat.participants.map(async (participant: GroupParticipant) => ({
             id: participant.id._serialized,

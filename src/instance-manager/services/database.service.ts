@@ -175,11 +175,33 @@ export class DatabaseService {
     // Добавляем updated_at автоматически
     updates.updated_at = new Date();
 
+    // Список разрешенных полей для обновления (исключаем удаленные поля)
+    const allowedFields = [
+      'user_id',
+      'provider',
+      'type_instance',
+      'port_api',
+      'port_mcp',
+      'api_key',
+      'api_key_generated_at',
+      'last_qr_generated_at',
+      'api_webhook_schema',
+      'mcp_schema',
+      'agno_config',
+      'updated_at',
+      'auth_status',
+      'account',
+      'whatsapp_state',
+      'token',
+    ];
+
     Object.entries(updates).forEach(([key, value]) => {
-      if (value !== undefined) {
+      if (value !== undefined && allowedFields.includes(key)) {
         updateFields.push(`${key} = $${paramIndex}`);
         values.push(value);
         paramIndex++;
+      } else if (value !== undefined && !allowedFields.includes(key)) {
+        logger.warn(`Ignoring unknown field in updateInstance: ${key}`, { instanceId: id });
       }
     });
 

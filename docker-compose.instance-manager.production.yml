@@ -24,6 +24,7 @@ services:
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DOCKER_CONTAINER=true
       - DATABASE_SCHEMA=${DATABASE_SCHEMA:-public}
       # Database connection - Supabase
       - DATABASE_URL=${DATABASE_URL}

@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Принудительно устанавливаем development окружение
+export NODE_ENV=development
+
 # Цвета для вывода
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -12,9 +15,17 @@ NC='\033[0m' # No Color
 get_external_ip() {
     local ip=""
     
-    # Пробуем несколько сервисов для получения внешнего IP
-    for service in "ifconfig.me" "ipecho.net/plain" "icanhazip.com" "ident.me"; do
-        ip=$(curl -s --connect-timeout 5 --max-time 10 "http://$service" 2>/dev/null | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$')
+    # Для development окружения используем localhost по умолчанию
+    # Это ускоряет запуск и избегает проблем с сетью
+    if [[ "${NODE_ENV:-development}" == "development" ]]; then
+        echo "localhost"
+        return 0
+    fi
+    
+    # Для production пробуем получить внешний IP
+    # Пробуем быстрые IPv4 сервисы
+    for service in "ipv4.icanhazip.com" "api.ipify.org" "checkip.amazonaws.com"; do
+        ip=$(timeout 3 curl -s --connect-timeout 2 --max-time 3 "http://$service" 2>/dev/null | tr -d '\n\r' | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$')
         if [[ -n "$ip" ]]; then
             echo "$ip"
             return 0
@@ -195,14 +206,24 @@ echo -e "${YELLOW}🌐 Создание Docker сети для инстансо�
 if docker network ls | grep -q "wweb-network"; then
     echo -e "${BLUE}🔧 Пересоздание сети wweb-network для обеспечения правильной конфигурации...${NC}"
     docker network rm wweb-network 2>/dev/null || true
+    sleep 1
 fi
 
 echo -e "${BLUE}🔧 Создание сети wweb-network...${NC}"
-docker network create \
+if docker network create \
     --driver bridge \
     --subnet=172.21.0.0/16 \
-    wweb-network
-echo -e "${GREEN}✅ Сеть wweb-network создана с правильной конфигурацией${NC}"
+    wweb-network 2>/dev/null; then
+    echo -e "${GREEN}✅ Сеть wweb-network создана с правильной конфигурацией${NC}"
+else
+    # Проверяем, не была ли сеть создана параллельно
+    if docker network ls | grep -q "wweb-network"; then
+        echo -e "${GREEN}✅ Сеть wweb-network уже существует${NC}"
+    else
+        echo -e "${RED}❌ Не удалось создать сеть wweb-network${NC}"
+        exit 1
+    fi
+fi
 
 # Определение режима запуска Instance Manager
 DOCKER_CONTEXT=$(docker context show)

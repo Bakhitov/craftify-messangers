@@ -181,26 +181,45 @@ curl -X POST http://13.61.141.6:3000/api/v1/instances \
 }'
 ```
 
+```bash
+curl -X POST http://localhost:3000/api/v1/instances -H "Content-Type: application/json" -d '{
+  "user_id": "82914a57-dafe-4ac2-957c-1deb96d13544", 
+  "provider": "whatsappweb", 
+  "type_instance": ["api"],
+  "agno_config": {
+        "model": "gpt-4.1",
+        "stream": false,
+        "agnoUrl": "https://crafty-v0-0-1.onrender.com/v1/playground/agents/demo_agent/runs",
+        "enabled": true,
+        "agent_id": "demo_agent"
+    }, 
+  "api_webhook_schema": {
+    "enabled": true, 
+    "url": "https://workflows-api.jetadmin.io/hooks/gvUIflaSb70RevttxcJSgwypdMJjO5Yu", 
+    "filters": {
+      "allowGroups": false, 
+      "allowPrivate": true
+    }
+  }
+}'
+```
+
 #### Создание Telegram экземпляра
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/instances \
 -H "Content-Type: application/json" \
 -d '{
-    "user_id": "test-telegram-user-001",
+    "user_id": "82914a57-dafe-4ac2-957c-1deb96d13544",
     "provider": "telegram",
     "type_instance": ["api"],
     "token": "7961413009:AAGEp-pakPC5OmvgTyXBLmNGoSlLdCAzg28",
     "agno_config": {
         "model": "gpt-4.1",
         "stream": false,
-        "agnoUrl": "https://crafty-v0-0-1.onrender.com/v1/agents/finance_analyst_v1/runs",
+        "agnoUrl": "https://crafty-v0-0-1.onrender.com/v1/playground/agents/demo_agent/runs",
         "enabled": true,
-        "agent_id": "finance_analyst_v1"
-    },
-    "api_webhook_schema": {
-        "enabled": true,
-        "url": "https://workflows-api.jetadmin.io/hooks/gvUIflaSb70RevttxcJSgwypdMJjO5Yu"
+        "agent_id": "demo_agent"
     }
 }'
 ```

@@ -323,6 +323,8 @@ export interface ExtendedClient {
   currentQrCode?: string;
   lastActivity?: Date;
   connectionAttempts?: number;
+  addAgnoMessageId?: (messageId: string) => void;
+  addApiMessageId?: (messageId: string) => void;
 }
 
 // Конфигурация приложения
