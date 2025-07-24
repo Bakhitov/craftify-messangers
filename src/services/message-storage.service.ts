@@ -41,21 +41,21 @@ export class MessageStorageService {
     if (!chatId) {
       return undefined;
     }
-    
+
     // Используем детерминированную генерацию UUID
     const crypto = require('crypto');
     const sessionString = agentId ? `session:${agentId}:${chatId}` : `session:${chatId}`;
     const hash = crypto.createHash('sha256').update(sessionString).digest('hex');
-    
+
     // Форматируем как UUID v4
     const uuid = [
       hash.substr(0, 8),
       hash.substr(8, 4),
       '4' + hash.substr(13, 3), // версия 4
       ((parseInt(hash.substr(16, 1), 16) & 0x3) | 0x8).toString(16) + hash.substr(17, 3), // вариант
-      hash.substr(20, 12)
+      hash.substr(20, 12),
     ].join('-');
-    
+
     return uuid;
   }
 
@@ -66,7 +66,8 @@ export class MessageStorageService {
     try {
       // Автоматически генерируем session_id если не передан
       // Используем agent_id + chat_id если agent_id доступен, иначе только chat_id
-      const sessionId = messageData.session_id || this.generateSessionId(messageData.agent_id, messageData.chat_id);
+      const sessionId =
+        messageData.session_id || this.generateSessionId(messageData.agent_id, messageData.chat_id);
 
       const query = `
         INSERT INTO ${this.schema}.messages (

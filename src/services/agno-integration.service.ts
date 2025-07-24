@@ -147,10 +147,7 @@ export class AgnoIntegrationService {
   /**
    * Отправляет сообщение в агентную систему и возвращает ответ
    */
-  async sendToAgent(
-    message: string,
-    config: AgnoConfig,
-  ): Promise<AgnoResponse | null> {
+  async sendToAgent(message: string, config: AgnoConfig): Promise<AgnoResponse | null> {
     return this.sendToAgentWithFiles(message, config, []);
   }
 
@@ -180,15 +177,15 @@ export class AgnoIntegrationService {
       const formData = new FormData();
       formData.append('message', message.trim());
       formData.append('stream', config.stream.toString());
-      
+
       if (config.model) {
         formData.append('model', config.model);
       }
-      
+
       if (config.userId) {
         formData.append('user_id', config.userId);
       }
-      
+
       if (config.sessionId) {
         formData.append('session_id', config.sessionId);
       }
@@ -216,7 +213,7 @@ export class AgnoIntegrationService {
 
       const response = await axios.post(url, formData, {
         headers: {
-          'Accept': 'application/json',
+          Accept: 'application/json',
           ...formData.getHeaders(),
         },
         timeout: this.config.timeout,
@@ -243,7 +240,7 @@ export class AgnoIntegrationService {
 
       // Обрабатываем новый формат ответа
       const responseData = response.data;
-      
+
       if (!responseData || typeof responseData !== 'object') {
         logger.warn('Agno API returned invalid response format', {
           agent_id: config.agent_id,

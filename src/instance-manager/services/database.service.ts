@@ -217,7 +217,27 @@ export class DatabaseService {
       RETURNING *
     `;
 
+    // Добавляем отладочные логи для диагностики проблемы с auth_status
+    if (updates.auth_status) {
+      logger.debug(`Updating auth_status in database for instance ${id}`, {
+        auth_status: updates.auth_status,
+        whatsapp_state: updates.whatsapp_state,
+        account: updates.account,
+        query,
+        values: values.map((v, i) => `$${i + 1}: ${v}`),
+      });
+    }
+
     const result = await this.pool.query<MessageInstance>(query, values);
+
+    // Проверяем результат обновления
+    if (result.rows[0] && updates.auth_status) {
+      logger.debug(`Database update result for instance ${id}`, {
+        updated_auth_status: result.rows[0].auth_status,
+        expected_auth_status: updates.auth_status,
+        matches: result.rows[0].auth_status === updates.auth_status,
+      });
+    }
     return result.rows[0] || null;
   }
 

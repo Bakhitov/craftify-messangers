@@ -383,3 +383,53 @@ export interface StoredMessage extends MessageData {
   created_at: Date;
   updated_at: Date;
 }
+
+// Типы для массовой рассылки
+export interface BulkMessageRecipient {
+  to: string;
+  name?: string;
+  customMessage?: string; // Персонализированное сообщение для конкретного получателя
+}
+
+export interface BulkMessageRequest {
+  recipients: BulkMessageRecipient[];
+  message: string;
+  delayBetweenMessages?: number; // Задержка между сообщениями в миллисекундах (по умолчанию 1000)
+  templateVariables?: Record<string, string>; // Переменные для шаблонизации
+  failureStrategy?: 'continue' | 'abort'; // Что делать при ошибке (по умолчанию continue)
+  retryAttempts?: number; // Количество попыток повтора при ошибке (по умолчанию 1)
+}
+
+export interface BulkMessageResult {
+  recipient: string;
+  success: boolean;
+  messageId?: string;
+  error?: string;
+  attempts: number;
+  timestamp: number;
+}
+
+export interface BulkMessageResponse {
+  success: boolean;
+  totalRecipients: number;
+  successCount: number;
+  failureCount: number;
+  results: BulkMessageResult[];
+  startTime: number;
+  endTime: number;
+  totalDuration: number; // в миллисекундах
+}
+
+export interface BulkMessageStatus {
+  id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  progress: {
+    processed: number;
+    total: number;
+    percentage: number;
+  };
+  results?: BulkMessageResult[];
+  startTime?: number;
+  endTime?: number;
+  estimatedTimeRemaining?: number; // в миллисекундах
+}

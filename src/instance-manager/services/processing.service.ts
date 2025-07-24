@@ -81,7 +81,7 @@ export class ProcessingService {
           if (instance.type_instance.includes('api')) {
             const extractedApiKey = await this.composeService.waitForApiReady(
               instance,
-              60, // 2 минуты
+              3, // 9 секунд
               async (newApiKey: string) => {
                 // Обновляем API ключ в базе данных только если он отличается от instanceId
                 if (newApiKey !== instanceId) {
@@ -139,7 +139,7 @@ export class ProcessingService {
           if (instance.type_instance.includes('api')) {
             const extractedApiKey = await this.composeService.waitForApiReady(
               instance,
-              60, // 2 минуты
+              3, // 9 секунд
               async (newApiKey: string) => {
                 // Обновляем API ключ в базе данных только если он отличается от instanceId
                 if (newApiKey !== instanceId) {
@@ -193,7 +193,7 @@ export class ProcessingService {
           if (instance.type_instance.includes('api')) {
             const extractedApiKey = await this.composeService.waitForApiReady(
               instance,
-              60, // 2 минуты
+              3, // 9 секунд
               async (newApiKey: string) => {
                 // Обновляем API ключ в базе данных только если он отличается от instanceId
                 if (newApiKey !== instanceId) {

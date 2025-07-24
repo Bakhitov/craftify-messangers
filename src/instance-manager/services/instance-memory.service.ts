@@ -231,7 +231,7 @@ export class InstanceMemoryService extends EventEmitter {
     },
   ): void {
     const now = new Date();
-    
+
     this.setInstance(instanceId, {
       api_key: apiKey,
       api_key_first_use: now,
@@ -421,7 +421,7 @@ export class InstanceMemoryService extends EventEmitter {
     }
 
     const now = new Date();
-    
+
     if (type === 'sent') {
       instance.message_stats.sent_count++;
       instance.message_stats.daily_sent++;
@@ -451,24 +451,37 @@ export class InstanceMemoryService extends EventEmitter {
 
     return {
       total_instances: instances.length,
-      active_instances: instances.filter(i => i.status === 'client_ready' || i.status === 'auth_success').length,
-      authenticated_instances: instances.filter(i => i.auth_status === 'authenticated' || i.auth_status === 'client_ready').length,
-      error_instances: instances.filter(i => i.status === 'error' || i.status === 'client_error').length,
+      active_instances: instances.filter(
+        i => i.status === 'client_ready' || i.status === 'auth_success',
+      ).length,
+      authenticated_instances: instances.filter(
+        i => i.auth_status === 'authenticated' || i.auth_status === 'client_ready',
+      ).length,
+      error_instances: instances.filter(i => i.status === 'error' || i.status === 'client_error')
+        .length,
       qr_pending_instances: instances.filter(i => i.status === 'qr_ready').length,
       memory_usage_mb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
-      avg_uptime_hours: instances.reduce((sum, i) => {
-        const uptime = i.system_info.uptime_start ? 
-          (now.getTime() - i.system_info.uptime_start.getTime()) / (1000 * 60 * 60) : 0;
-        return sum + uptime;
-      }, 0) / Math.max(instances.length, 1),
-      total_messages_today: instances.reduce((sum, i) => sum + i.message_stats.daily_sent + i.message_stats.daily_received, 0)
+      avg_uptime_hours:
+        instances.reduce((sum, i) => {
+          const uptime = i.system_info.uptime_start
+            ? (now.getTime() - i.system_info.uptime_start.getTime()) / (1000 * 60 * 60)
+            : 0;
+          return sum + uptime;
+        }, 0) / Math.max(instances.length, 1),
+      total_messages_today: instances.reduce(
+        (sum, i) => sum + i.message_stats.daily_sent + i.message_stats.daily_received,
+        0,
+      ),
     };
   }
 
   /**
    * Получает историю статусов инстанса
    */
-  getStatusHistory(instanceId: string, _limit: number = 10): Array<{
+  getStatusHistory(
+    instanceId: string,
+    _limit: number = 10,
+  ): Array<{
     status: string;
     timestamp: Date;
     source?: string;
@@ -480,18 +493,23 @@ export class InstanceMemoryService extends EventEmitter {
       return [];
     }
 
-    return [{
-      status: instance.status,
-      timestamp: instance.updated_at,
-      source: 'memory',
-      message: `Current status: ${instance.status}`
-    }];
+    return [
+      {
+        status: instance.status,
+        timestamp: instance.updated_at,
+        source: 'memory',
+        message: `Current status: ${instance.status}`,
+      },
+    ];
   }
 
   /**
    * Получает историю QR кодов
    */
-  getQRHistory(instanceId: string, _limit: number = 10): Array<{
+  getQRHistory(
+    instanceId: string,
+    _limit: number = 10,
+  ): Array<{
     qr_code: string;
     qr_text?: string;
     generated_at: Date;
@@ -503,19 +521,24 @@ export class InstanceMemoryService extends EventEmitter {
       return [];
     }
 
-    return [{
-      qr_code: instance.qr_code.code,
-      qr_text: instance.qr_code.text,
-      generated_at: instance.qr_code.generated_at,
-      expires_at: instance.qr_code.expires_at,
-      source: instance.qr_code.source
-    }];
+    return [
+      {
+        qr_code: instance.qr_code.code,
+        qr_text: instance.qr_code.text,
+        generated_at: instance.qr_code.generated_at,
+        expires_at: instance.qr_code.expires_at,
+        source: instance.qr_code.source,
+      },
+    ];
   }
 
   /**
    * Получает историю API ключей (теперь всегда возвращает instance_id)
    */
-  getApiKeyHistory(instanceId: string, _limit: number = 10): Array<{
+  getApiKeyHistory(
+    instanceId: string,
+    _limit: number = 10,
+  ): Array<{
     api_key: string;
     created_at: Date;
     usage_count: number;
@@ -526,12 +549,14 @@ export class InstanceMemoryService extends EventEmitter {
       return [];
     }
 
-    return [{
-      api_key: instance.api_key,
-      created_at: instance.created_at,
-      usage_count: instance.api_key_usage_count,
-      last_used_at: instance.api_key_last_use
-    }];
+    return [
+      {
+        api_key: instance.api_key,
+        created_at: instance.created_at,
+        usage_count: instance.api_key_usage_count,
+        last_used_at: instance.api_key_last_use,
+      },
+    ];
   }
 
   /**
@@ -559,7 +584,7 @@ export class InstanceMemoryService extends EventEmitter {
       qr_text: instance.qr_code.text,
       generated_at: instance.qr_code.generated_at,
       expires_at: instance.qr_code.expires_at,
-      source: instance.qr_code.source
+      source: instance.qr_code.source,
     };
   }
 
@@ -579,14 +604,17 @@ export class InstanceMemoryService extends EventEmitter {
     }
 
     const now = new Date();
-    const uptimeHours = instance.system_info.uptime_start ? 
-      (now.getTime() - instance.system_info.uptime_start.getTime()) / (1000 * 60 * 60) : 0;
+    const uptimeHours = instance.system_info.uptime_start
+      ? (now.getTime() - instance.system_info.uptime_start.getTime()) / (1000 * 60 * 60)
+      : 0;
 
     // Простой алгоритм расчета здоровья (0-100)
     let healthScore = 100;
     if (instance.status === 'error' || instance.status === 'client_error') healthScore -= 50;
-    if (instance.system_info.consecutive_failures > 0) healthScore -= instance.system_info.consecutive_failures * 10;
-    if (instance.error_info && instance.error_info.error_count > 0) healthScore -= Math.min(instance.error_info.error_count * 5, 30);
+    if (instance.system_info.consecutive_failures > 0)
+      healthScore -= instance.system_info.consecutive_failures * 10;
+    if (instance.error_info && instance.error_info.error_count > 0)
+      healthScore -= Math.min(instance.error_info.error_count * 5, 30);
     healthScore = Math.max(0, healthScore);
 
     return {
@@ -594,14 +622,17 @@ export class InstanceMemoryService extends EventEmitter {
       messages_sent_today: instance.message_stats.daily_sent,
       messages_received_today: instance.message_stats.daily_received,
       last_activity: instance.last_activity,
-      health_score: healthScore
+      health_score: healthScore,
     };
   }
 
   /**
    * Получает ошибки инстанса
    */
-  getErrors(instanceId: string, limit: number = 10): Array<{
+  getErrors(
+    instanceId: string,
+    limit: number = 10,
+  ): Array<{
     error: string;
     timestamp: Date;
     source?: string;
@@ -661,18 +692,22 @@ export class InstanceMemoryService extends EventEmitter {
       cleaned_instances: totalBefore - totalAfter,
       total_instances: totalAfter,
       memory_before_mb: memoryBefore,
-      memory_after_mb: memoryAfter
+      memory_after_mb: memoryAfter,
     };
   }
 
   /**
    * Сохраняет QR код
    */
-  saveQRCode(instanceId: string, qrCode: string, options?: {
-    text?: string;
-    source?: string;
-    expirySeconds?: number;
-  }): void {
+  saveQRCode(
+    instanceId: string,
+    qrCode: string,
+    options?: {
+      text?: string;
+      source?: string;
+      expirySeconds?: number;
+    },
+  ): void {
     const instance = this.instances.get(instanceId);
     if (!instance) {
       logger.warn(`Instance ${instanceId} not found for QR code save`);
@@ -687,7 +722,7 @@ export class InstanceMemoryService extends EventEmitter {
       text: options?.text,
       generated_at: now,
       expires_at: expiryTime,
-      source: options?.source
+      source: options?.source,
     };
 
     instance.updated_at = now;
@@ -702,7 +737,7 @@ export class InstanceMemoryService extends EventEmitter {
   markClientReady(instanceId: string): void {
     this.updateStatus(instanceId, 'client_ready', {
       source: 'client',
-      message: 'Client is ready for messages'
+      message: 'Client is ready for messages',
     });
 
     const instance = this.instances.get(instanceId);
@@ -717,11 +752,14 @@ export class InstanceMemoryService extends EventEmitter {
   /**
    * Отмечает успешную аутентификацию
    */
-  markAuthenticationSuccess(instanceId: string, options?: {
-    phone_number?: string;
-    account?: string;
-    profile_picture_url?: string;
-  }): void {
+  markAuthenticationSuccess(
+    instanceId: string,
+    options?: {
+      phone_number?: string;
+      account?: string;
+      profile_picture_url?: string;
+    },
+  ): void {
     const instance = this.instances.get(instanceId);
     if (!instance) {
       logger.warn(`Instance ${instanceId} not found for auth success`);
@@ -729,13 +767,13 @@ export class InstanceMemoryService extends EventEmitter {
     }
 
     const now = new Date();
-    
+
     instance.auth_status = 'authenticated';
     instance.whatsapp_user = {
       ...instance.whatsapp_user,
       ...options,
       authenticated_at: now,
-      last_seen_online: now
+      last_seen_online: now,
     };
 
     instance.updated_at = now;
@@ -755,9 +793,11 @@ export class InstanceMemoryService extends EventEmitter {
       // Удаляем неактивные инстансы
       const lastActivity = instance.last_activity || instance.updated_at;
       const inactiveTime = now.getTime() - lastActivity.getTime();
-      
-      if (inactiveTime > this.MAX_INACTIVE_TIME && 
-          (instance.status === 'stopped' || instance.status === 'error')) {
+
+      if (
+        inactiveTime > this.MAX_INACTIVE_TIME &&
+        (instance.status === 'stopped' || instance.status === 'error')
+      ) {
         instancesToRemove.push(instanceId);
       }
     }
@@ -776,4 +816,4 @@ export class InstanceMemoryService extends EventEmitter {
 }
 
 // Экспортируем singleton
-export const instanceMemoryService = new InstanceMemoryService(); 
+export const instanceMemoryService = new InstanceMemoryService();

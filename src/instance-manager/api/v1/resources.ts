@@ -5,6 +5,7 @@ import { ResourceService } from '../../services/resource.service';
 import { ProcessingService } from '../../services/processing.service';
 import { PortManager } from '../../utils/port-manager.utils';
 import { instanceMemoryService } from '../../services/instance-memory.service';
+import { resourceCacheService } from '../../services/resource-cache.service';
 import {
   lenientRateLimit,
   moderateRateLimit,
@@ -21,13 +22,16 @@ const resourceService = new ResourceService(dockerService, databaseService);
 const processingService = new ProcessingService(databaseService, dockerService);
 const portManager = new PortManager(databaseService.getPool());
 
-// GET /api/v1/resources - Получить общую информацию о ресурсах сервера (мягкий лимит)
+// GET /api/v1/resources - Получить общую информацию о ресурсах сервера (с кэшированием)
 resourcesRouter.get(
   '/',
   lenientRateLimit.middleware(),
   async (_req: Request, res: Response): Promise<void> => {
     try {
-      const resources = await resourceService.getServerResources();
+      const resources = await resourceCacheService.getServerResources(() =>
+        resourceService.getServerResources(),
+      );
+
       res.json({
         success: true,
         ...resources,
@@ -42,13 +46,16 @@ resourcesRouter.get(
   },
 );
 
-// GET /api/v1/resources/instances - Получить информацию о ресурсах инстансов (мягкий лимит)
+// GET /api/v1/resources/instances - Получить информацию о ресурсах инстансов (с кэшированием)
 resourcesRouter.get(
   '/instances',
   lenientRateLimit.middleware(),
   async (_req: Request, res: Response): Promise<void> => {
     try {
-      const instances = await resourceService.getInstancesResources();
+      const instances = await resourceCacheService.getInstancesResources(() =>
+        resourceService.getInstancesResources(),
+      );
+
       res.json({
         success: true,
         instances,
@@ -64,13 +71,16 @@ resourcesRouter.get(
   },
 );
 
-// GET /api/v1/resources/ports - Получить статистику использования портов (мягкий лимит)
+// GET /api/v1/resources/ports - Получить статистику использования портов (с кэшированием)
 resourcesRouter.get(
   '/ports',
   lenientRateLimit.middleware(),
   async (_req: Request, res: Response): Promise<void> => {
     try {
-      const portStats = await portManager.getPortStatistics();
+      const portStats = await resourceCacheService.getPortStatistics(() =>
+        portManager.getPortStatistics(),
+      );
+
       res.json({
         success: true,
         ...portStats,
@@ -91,7 +101,12 @@ resourcesRouter.post(
   moderateRateLimit.middleware(),
   async (_req: Request, res: Response): Promise<void> => {
     try {
+      // Очищаем кэш портов в PortManager
       portManager.clearCache();
+
+      // Очищаем кэш портов в ResourceCacheService
+      resourceCacheService.invalidate('port_statistics');
+
       res.json({
         success: true,
         message: 'Port cache cleared successfully',
@@ -106,13 +121,16 @@ resourcesRouter.post(
   },
 );
 
-// GET /api/v1/resources/performance - Получить метрики производительности (мягкий лимит)
+// GET /api/v1/resources/performance - Получить метрики производительности (с кэшированием)
 resourcesRouter.get(
   '/performance',
   lenientRateLimit.middleware(),
   async (_req: Request, res: Response): Promise<void> => {
     try {
-      const metrics = await processingService.getPerformanceMetrics();
+      const metrics = await resourceCacheService.getPerformanceMetrics(() =>
+        processingService.getPerformanceMetrics(),
+      );
+
       res.json({
         success: true,
         ...metrics,
@@ -127,13 +145,16 @@ resourcesRouter.get(
   },
 );
 
-// GET /api/v1/resources/health - Получить состояние здоровья системы (мягкий лимит)
+// GET /api/v1/resources/health - Получить состояние здоровья системы (с кэшированием)
 resourcesRouter.get(
   '/health',
   lenientRateLimit.middleware(),
   async (_req: Request, res: Response): Promise<void> => {
     try {
-      const health = await processingService.getSystemHealth();
+      const health = await resourceCacheService.getSystemHealth(() =>
+        processingService.getSystemHealth(),
+      );
+
       res.json({
         success: true,
         ...health,
@@ -148,7 +169,71 @@ resourcesRouter.get(
   },
 );
 
-// POST /api/v1/resources/memory/cleanup - Принудительная очистка памяти (умеренный лимит)
+// GET /api/v1/resources/cache/stats - Новый endpoint для статистики кэша
+resourcesRouter.get(
+  '/cache/stats',
+  lenientRateLimit.middleware(),
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const stats = resourceCacheService.getStats();
+
+      res.json({
+        success: true,
+        cache: stats,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error('Failed to get cache stats', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  },
+);
+
+// POST /api/v1/resources/cache/clear - Новый endpoint для очистки всего кэша
+resourcesRouter.post(
+  '/cache/clear',
+  moderateRateLimit.middleware(),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { keys } = req.body;
+
+      if (keys && Array.isArray(keys)) {
+        // Очищаем конкретные ключи
+        let clearedCount = 0;
+        keys.forEach((key: string) => {
+          if (resourceCacheService.invalidate(key)) {
+            clearedCount++;
+          }
+        });
+
+        res.json({
+          success: true,
+          message: `Cleared ${clearedCount} cache entries`,
+          cleared_keys: keys.filter(key => resourceCacheService.invalidate(key)),
+        });
+      } else {
+        // Очищаем весь кэш
+        resourceCacheService.invalidateAll();
+
+        res.json({
+          success: true,
+          message: 'All cache cleared successfully',
+        });
+      }
+    } catch (error: any) {
+      logger.error('Failed to clear cache', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  },
+);
+
+// POST /api/v1/resources/memory/cleanup - Принудительная очистка памяти (с инвалидацией кэша)
 resourcesRouter.post(
   '/memory/cleanup',
   moderateRateLimit.middleware(),
@@ -156,9 +241,13 @@ resourcesRouter.post(
     try {
       const cleanupResult = instanceMemoryService.forceMemoryCleanupPublic();
 
+      // Инвалидируем кэш связанный с экземплярами после очистки памяти
+      resourceCacheService.invalidateInstanceRelated();
+
       res.json({
         success: true,
         message: 'Memory cleanup completed',
+        cache_invalidated: true,
         ...cleanupResult,
       });
     } catch (error: any) {
@@ -196,9 +285,14 @@ resourcesRouter.post(
         return;
       }
 
+      // Очищаем кэш перед стресс-тестом для получения актуальных данных
+      resourceCacheService.invalidateAll();
+
       const results = await processingService.runStressTest(concurrentRequests, duration);
+
       res.json({
         success: true,
+        cache_cleared_before_test: true,
         ...results,
       });
     } catch (error: any) {

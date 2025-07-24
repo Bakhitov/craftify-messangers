@@ -6,6 +6,7 @@ import logger from '../../logger';
 import axios from 'axios';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { ConnectionUtils } from '../utils/connection.utils';
 
 export class ComposeService {
   constructor(private dockerService: DockerService) {}
@@ -167,31 +168,41 @@ export class ComposeService {
       }
     }
 
+    // Определяем правильный health endpoint в зависимости от провайдера
+    let healthEndpoint: string;
+    let statusEndpoint: string;
+
+    if (instance.provider === 'telegram') {
+      healthEndpoint = '/api/v1/telegram/health';
+      statusEndpoint = '/api/v1/telegram/status';
+    } else {
+      // Для WhatsApp и других провайдеров
+      healthEndpoint = '/api/v1/health';
+      statusEndpoint = '/api/v1/status';
+    }
+
+    // Получаем правильный URL для подключения (в зависимости от development/production режима)
+    const apiUrl = ConnectionUtils.getApiUrl(instance.id, instance.port_api);
+
     // Проверяем, что API сервер запущен и доступен
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         // Проверяем health endpoint без авторизации
-        const healthResponse = await axios.get(
-          `http://host.docker.internal:${instance.port_api}/api/health`,
-          {
-            timeout: 5000,
-          },
-        );
+        const healthResponse = await axios.get(`${apiUrl}${healthEndpoint}`, {
+          timeout: 5000,
+        });
 
         if (healthResponse.status === 200) {
           logger.info(`API health check passed after ${attempt} attempts`);
 
           // Проверяем API с instanceId как ключом
           try {
-            const statusResponse = await axios.get(
-              `http://host.docker.internal:${instance.port_api}/api/status`,
-              {
-                headers: {
-                  Authorization: `Bearer ${apiKey}`,
-                },
-                timeout: 5000,
+            const statusResponse = await axios.get(`${apiUrl}${statusEndpoint}`, {
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
               },
-            );
+              timeout: 5000,
+            });
 
             if (statusResponse.status === 200) {
               logger.info(`API is fully ready and authenticated after ${attempt} attempts`);
@@ -201,8 +212,10 @@ export class ComposeService {
             logger.debug(`API authentication failed, attempt ${attempt}/${maxAttempts}`);
           }
         }
-      } catch {
-        logger.debug(`API not responding yet, attempt ${attempt}/${maxAttempts}`);
+      } catch (error) {
+        logger.debug(
+          `API not responding yet, attempt ${attempt}/${maxAttempts}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
       }
 
       // Ждем 3 секунды перед следующей попыткой
@@ -210,7 +223,9 @@ export class ComposeService {
     }
 
     // Возвращаем instanceId как API ключ даже если API не ответил
-    logger.warn(`API did not respond after ${maxAttempts} attempts, returning instance ID as API key`);
+    logger.warn(
+      `API did not respond after ${maxAttempts} attempts, returning instance ID as API key`,
+    );
     return apiKey;
   }
 

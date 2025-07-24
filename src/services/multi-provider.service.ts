@@ -241,10 +241,16 @@ export class MultiProviderService extends EventEmitter {
         return new TelegramProvider(configWithInstanceId as any, this.messageStorageService);
 
       case 'whatsapp-official':
-        return new WhatsAppOfficialProvider(configWithInstanceId as any, this.messageStorageService);
+        return new WhatsAppOfficialProvider(
+          configWithInstanceId as any,
+          this.messageStorageService,
+        );
 
       case 'facebook-messenger':
-        return new FacebookMessengerProvider(configWithInstanceId as any, this.messageStorageService);
+        return new FacebookMessengerProvider(
+          configWithInstanceId as any,
+          this.messageStorageService,
+        );
 
       case 'instagram':
         return new InstagramProvider(configWithInstanceId as any, this.messageStorageService);
@@ -399,7 +405,7 @@ export class MultiProviderService extends EventEmitter {
           instances.push({
             instance_id: instanceId,
             provider_type: providerInstance.constructor.name.replace('Provider', '').toLowerCase(),
-            status: 'ready'
+            status: 'ready',
           });
         }
         return instances;
@@ -429,9 +435,13 @@ export class MultiProviderService extends EventEmitter {
             this.providers.set(instance.instance_id, provider);
             await provider.initialize();
 
-            await this.providerDatabaseService.updateInstance(instance.instance_id, instance.provider_type, {
-              auth_status: 'ready',
-            });
+            await this.providerDatabaseService.updateInstance(
+              instance.instance_id,
+              instance.provider_type,
+              {
+                auth_status: 'ready',
+              },
+            );
 
             logger.info(
               `Loaded existing ${instance.provider_type} instance: ${instance.instance_id}`,
@@ -440,9 +450,13 @@ export class MultiProviderService extends EventEmitter {
         } catch (error) {
           logger.error(`Failed to load instance ${instance.instance_id}:`, error);
 
-          await this.providerDatabaseService.updateInstance(instance.instance_id, instance.provider_type, {
-            auth_status: 'error',
-          });
+          await this.providerDatabaseService.updateInstance(
+            instance.instance_id,
+            instance.provider_type,
+            {
+              auth_status: 'error',
+            },
+          );
         }
       }
 

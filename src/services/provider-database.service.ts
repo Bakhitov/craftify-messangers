@@ -171,7 +171,10 @@ export class ProviderDatabaseService {
         status: createdInstance.status,
       });
 
-      return this.mapDbRowToInstanceData(createdInstance, instanceData.provider as MessengerProvider);
+      return this.mapDbRowToInstanceData(
+        createdInstance,
+        instanceData.provider as MessengerProvider,
+      );
     } catch (error) {
       logger.error('Failed to create instance', {
         error: error instanceof Error ? error.message : String(error),
@@ -297,7 +300,7 @@ export class ProviderDatabaseService {
       // Обновляемые поля (убрал agent_id, agno_enable)
       const fields = [
         'account',
-        'status', 
+        'status',
         'phone',
         'api_key',
         'token',
@@ -312,12 +315,12 @@ export class ProviderDatabaseService {
         if (updateData[field as keyof InstanceData] !== undefined) {
           updateFields.push(`${field} = $${paramIndex}`);
           let value = updateData[field as keyof InstanceData];
-          
+
           // Сериализуем JSON поля
           if ((field === 'api_webhook_schema' || field === 'mcp_schema') && value) {
             value = JSON.stringify(value);
           }
-          
+
           values.push(value);
           paramIndex++;
         }

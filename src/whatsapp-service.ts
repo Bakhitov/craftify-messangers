@@ -15,6 +15,8 @@ import {
   SendMediaMessageResponse,
   ExtendedClient,
   WhatsAppStatusResponse,
+  BulkMessageRequest,
+  BulkMessageResponse,
 } from './types';
 import logger from './logger';
 import path from 'path';
@@ -242,10 +244,15 @@ export class WhatsAppService {
         throw error;
       }
 
+      // Проверяем что result содержит корректные данные
+      if (!result || !result.id || !result.id._serialized) {
+        throw ApiError.internal('WhatsApp sendMessage returned invalid result structure');
+      }
+
       logger.debug('Outgoing message sent', {
         to: number,
         messageLength: message.length,
-        messageId: result.id.id,
+        messageId: result.id._serialized,
       });
 
       // Сохраняем исходящее сообщение в базу данных
@@ -273,7 +280,7 @@ export class WhatsAppService {
       }
 
       return {
-        messageId: result.id.id,
+        messageId: result.id._serialized,
       };
     } catch (error) {
       if (error instanceof ApiError) {
@@ -473,7 +480,7 @@ export class WhatsAppService {
       }
 
       return {
-        messageId: result.id.id,
+        messageId: result.id._serialized,
       };
     } catch (error) {
       throw ApiError.internal(
@@ -732,7 +739,7 @@ export class WhatsAppService {
       );
 
       return {
-        messageId: result.id.id,
+        messageId: result.id._serialized,
         mediaInfo: {
           mimetype: media.mimetype,
           filename: media.filename || 'unknown',
@@ -744,5 +751,24 @@ export class WhatsAppService {
         `Failed to send media message: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  async sendBulkMessages(request: BulkMessageRequest): Promise<BulkMessageResponse> {
+    const { bulkMessageService } = await import('./services/bulk-message.service');
+
+    // Функция отправки для WhatsApp через этот сервис
+    const sendMessageFn = async (
+      to: string,
+      message: string,
+    ): Promise<{ messageId?: string; error?: string }> => {
+      try {
+        const result = await this.sendMessage(to, message);
+        return { messageId: result.messageId };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
+      }
+    };
+
+    return await bulkMessageService.executeBulkMessage(request, sendMessageFn);
   }
 }

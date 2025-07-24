@@ -3,6 +3,7 @@ import { Client } from 'whatsapp-web.js';
 import { WhatsAppService } from './whatsapp-service';
 import { MessageStorageService } from './services/message-storage.service';
 import { instanceMemoryService } from './instance-manager/services/instance-memory.service';
+import { BulkMessageRequest } from './types';
 import logger from './logger';
 import { createPool, getDatabaseConfig } from './config/database.config';
 
@@ -255,7 +256,7 @@ export function routerFactory(
    * @swagger
    * /api/v1/send:
    *   post:
-   *     summary: Send a message to a WhatsApp contact
+   *     summary: Send WhatsApp message (text or media)
    *     requestBody:
    *       required: true
    *       content:
@@ -264,17 +265,28 @@ export function routerFactory(
    *             type: object
    *             required:
    *               - number
-   *               - message
    *             properties:
    *               number:
    *                 type: string
-   *                 description: The phone number to send the message to
+   *                 description: Phone number to send message
    *               message:
    *                 type: string
-   *                 description: The message content to send
+   *                 description: Text message content (for text messages)
+   *               source:
+   *                 type: string
+   *                 description: Media URL or file path (for media messages)
+   *               caption:
+   *                 type: string
+   *                 description: Caption for media messages (optional)
+   *               mediaType:
+   *                 type: string
+   *                 enum: [text, image, document, audio, video]
+   *                 description: Type of message (auto-detected if not provided)
    *     responses:
    *       200:
    *         description: Message sent successfully
+   *       400:
+   *         description: Invalid request parameters
    *       404:
    *         description: Number not found on WhatsApp
    *       500:
@@ -282,10 +294,10 @@ export function routerFactory(
    */
   router.post('/send', async (req: Request, res: Response) => {
     try {
-      const { number, message } = req.body;
+      const { number, message, source, caption, mediaType } = req.body;
 
-      if (!number || !message) {
-        res.status(400).json({ error: 'Number and message are required' });
+      if (!number) {
+        res.status(400).json({ error: 'Number is required' });
         return;
       }
 
@@ -294,14 +306,46 @@ export function routerFactory(
         instanceMemoryService.markApiKeyUsage(instanceId);
       }
 
-      const result = await whatsappService.sendMessage(number, message);
+      let result;
+
+      // Автоматическое определение типа сообщения
+      const isMediaMessage = source || mediaType !== 'text';
+
+      if (isMediaMessage) {
+        // Медиа сообщение
+        if (!source) {
+          res.status(400).json({
+            error: 'Source is required for media messages',
+          });
+          return;
+        }
+
+        result = await whatsappService.sendMediaMessage({
+          number,
+          source,
+          caption: caption || '',
+        });
+      } else {
+        // Текстовое сообщение
+        if (!message) {
+          res.status(400).json({
+            error: 'Message is required for text messages',
+          });
+          return;
+        }
+
+        result = await whatsappService.sendMessage(number, message);
+      }
 
       // Обновляем статистику отправленных сообщений
       if (instanceId && result.messageId) {
         instanceMemoryService.updateMessageStats(instanceId, 'sent');
       }
 
-      res.json(result);
+      res.json({
+        ...result,
+        messageType: isMediaMessage ? 'media' : 'text',
+      });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('not ready')) {
@@ -1235,6 +1279,125 @@ export function routerFactory(
   router.get('/account-info', getAccountInfo);
   router.post('/webhook/config', updateWebhookConfig);
   router.get('/webhook/config', getWebhookConfig);
+
+  /**
+   * @swagger
+   * /api/v1/send-bulk:
+   *   post:
+   *     summary: Send bulk WhatsApp messages
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - recipients
+   *               - message
+   *             properties:
+   *               recipients:
+   *                 type: array
+   *                 items:
+   *                   type: object
+   *                   properties:
+   *                     to:
+   *                       type: string
+   *                       description: Phone number
+   *                     name:
+   *                       type: string
+   *                       description: Contact name (optional)
+   *                     customMessage:
+   *                       type: string
+   *                       description: Custom message for this recipient (optional)
+   *               message:
+   *                 type: string
+   *                 description: Message template with variables like {name}, {phone}
+   *               delayBetweenMessages:
+   *                 type: number
+   *                 description: Delay between messages in milliseconds (default 1000)
+   *               templateVariables:
+   *                 type: object
+   *                 description: Variables to replace in message template
+   *               failureStrategy:
+   *                 type: string
+   *                 enum: [continue, abort]
+   *                 description: What to do on failure (default continue)
+   *               retryAttempts:
+   *                 type: number
+   *                 description: Number of retry attempts (default 1)
+   *     responses:
+   *       200:
+   *         description: Bulk message results
+   *       400:
+   *         description: Invalid request
+   *       500:
+   *         description: Server error
+   */
+  router.post('/send-bulk', async (req: Request, res: Response) => {
+    try {
+      const bulkRequest: BulkMessageRequest = req.body;
+
+      // Валидация
+      if (
+        !bulkRequest.recipients ||
+        !Array.isArray(bulkRequest.recipients) ||
+        bulkRequest.recipients.length === 0
+      ) {
+        res.status(400).json({
+          error: 'Recipients array is required and must not be empty',
+        });
+        return;
+      }
+
+      if (!bulkRequest.message || typeof bulkRequest.message !== 'string') {
+        res.status(400).json({
+          error: 'Message is required and must be a string',
+        });
+        return;
+      }
+
+      // Ограничение на количество получателей
+      if (bulkRequest.recipients.length > 100) {
+        res.status(400).json({
+          error: 'Maximum 100 recipients allowed per bulk message',
+        });
+        return;
+      }
+
+      // Валидация получателей
+      for (const recipient of bulkRequest.recipients) {
+        if (!recipient.to || typeof recipient.to !== 'string') {
+          res.status(400).json({
+            error: 'Each recipient must have a valid "to" field',
+          });
+          return;
+        }
+      }
+
+      // Отмечаем использование API ключа
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
+      // Выполняем массовую рассылку через WhatsApp сервис
+      const result = await whatsappService.sendBulkMessages(bulkRequest);
+
+      // Обновляем статистику отправленных сообщений
+      if (instanceId && result.successCount > 0) {
+        for (let i = 0; i < result.successCount; i++) {
+          instanceMemoryService.updateMessageStats(instanceId, 'sent');
+        }
+      }
+
+      res.json(result);
+    } catch (error) {
+      logger.error('Error in bulk message endpoint:', error);
+      res.status(500).json({
+        error: 'Failed to send bulk messages',
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
 
   return router;
 }

@@ -13,6 +13,7 @@ import {
   lenientRateLimit,
 } from '../../middleware/rate-limiter.middleware';
 import logger from '../../../logger';
+import { batchInstanceService } from '../../services/batch-instance.service';
 
 export const instancesRouter = Router();
 
@@ -218,6 +219,10 @@ instancesRouter.get(
         success: true,
         instance: {
           ...instance,
+          // Приоритет данных из памяти для auth_status и whatsapp_state
+          auth_status: memoryData?.auth_status || instance.auth_status,
+          whatsapp_state: memoryData ? memoryData.whatsapp_state : instance.whatsapp_state,
+          account: memoryData?.whatsapp_user?.account || instance.account,
           status: dockerStatus.running
             ? 'running'
             : dockerStatus.exists
@@ -854,3 +859,133 @@ instancesRouter.get('/:id/logs', async (req: Request, res: Response): Promise<vo
     });
   }
 });
+
+// GET /api/v1/instances/batch/status - Получить статус множественных экземпляров (НОВЫЙ ENDPOINT)
+instancesRouter.post(
+  '/batch/status',
+  lenientRateLimit.middleware(),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { instance_ids, options } = req.body;
+
+      if (!instance_ids || !Array.isArray(instance_ids)) {
+        res.status(400).json({
+          success: false,
+          error: 'instance_ids array is required',
+        });
+        return;
+      }
+
+      if (instance_ids.length > 50) {
+        res.status(400).json({
+          success: false,
+          error: 'Maximum 50 instances per batch request',
+        });
+        return;
+      }
+
+      const batchStatus = await batchInstanceService.getBatchInstanceStatus(instance_ids, options);
+
+      res.json({
+        success: true,
+        batch_size: instance_ids.length,
+        instances: batchStatus,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error('Failed to get batch instance status', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  },
+);
+
+// POST /api/v1/instances/batch/update - Batch обновление экземпляров (НОВЫЙ ENDPOINT)
+instancesRouter.post(
+  '/batch/update',
+  strictRateLimit.middleware(),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { updates } = req.body;
+
+      if (!updates || !Array.isArray(updates)) {
+        res.status(400).json({
+          success: false,
+          error: 'updates array is required',
+        });
+        return;
+      }
+
+      if (updates.length > 20) {
+        res.status(400).json({
+          success: false,
+          error: 'Maximum 20 instances per batch update',
+        });
+        return;
+      }
+
+      // Валидация каждого update
+      for (const update of updates) {
+        if (!update.id || !update.data) {
+          res.status(400).json({
+            success: false,
+            error: 'Each update must have id and data fields',
+          });
+          return;
+        }
+      }
+
+      const result = await batchInstanceService.batchUpdateInstances(updates);
+
+      res.json({
+        ...result,
+        batch_size: updates.length,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error('Failed to batch update instances', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  },
+);
+
+// GET /api/v1/instances/stats/aggregated - Агрегированная статистика экземпляров (НОВЫЙ ENDPOINT)
+instancesRouter.get(
+  '/stats/aggregated',
+  lenientRateLimit.middleware(),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { instance_ids } = req.query;
+      
+      let instanceIds: string[] | undefined;
+      if (instance_ids) {
+        if (typeof instance_ids === 'string') {
+          instanceIds = instance_ids.split(',');
+        } else if (Array.isArray(instance_ids)) {
+          instanceIds = instance_ids as string[];
+        }
+      }
+
+      const stats = await batchInstanceService.getAggregatedStats(instanceIds);
+
+      res.json({
+        success: true,
+        stats,
+        scope: instanceIds ? 'filtered' : 'all',
+        filtered_count: instanceIds?.length || 0,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error('Failed to get aggregated stats', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  },
+);

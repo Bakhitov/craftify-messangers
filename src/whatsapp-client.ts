@@ -325,6 +325,9 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
     if (config.messageStorageService && config.instanceId) {
       const isGroup = message.from.includes('@g.us');
 
+      // Нормализуем chat_id для единого ID диалога
+      const normalizedChatId = normalizeChatId(message, client);
+
       // Получаем agent_id из конфигурации Agno
       let agentId: string | undefined;
       try {
@@ -338,14 +341,14 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
         await config.messageStorageService.saveMessage({
           instance_id: config.instanceId,
           message_id: message.id._serialized,
-          chat_id: message.from,
+          chat_id: normalizedChatId, // Используем нормализованный chat_id
           from_number: contact.number,
           to_number: client.info?.wid?.user,
           message_body: message.body,
           message_type: message.type,
           is_from_me: false, // Входящее сообщение
           is_group: isGroup,
-          group_id: isGroup ? message.from : undefined,
+          group_id: isGroup ? normalizedChatId : undefined, // Используем нормализованный
           contact_name: contact.pushname || contact.name,
           agent_id: agentId, // Добавляем agent_id
           message_source: 'user', // Входящее сообщение от пользователя
@@ -421,8 +424,8 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
         const agnoConfig = await agnoIntegrationService.getAgnoConfig(config.instanceId);
         if (agnoConfig?.enabled) {
           // Генерируем session_id детерминированно из agent_id + chat_id
-          const chatId = message.from;
-          const sessionId = generateSessionId(agnoConfig.agent_id, chatId);
+          const normalizedChatId = normalizeChatId(message, client);
+          const sessionId = generateSessionId(agnoConfig.agent_id, normalizedChatId);
 
           // Обновляем конфигурацию с сгенерированным session_id
           const configWithSession = {
@@ -514,17 +517,21 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
               sentMessage.id._serialized
             ) {
               const isGroup = message.from.includes('@g.us');
+
+              // Нормализуем chat_id для единого ID диалога
+              const normalizedChatId = normalizeChatId(message, client);
+
               await config.messageStorageService.saveMessage({
                 instance_id: config.instanceId,
                 message_id: sentMessage.id._serialized,
-                chat_id: message.from,
+                chat_id: normalizedChatId, // Используем нормализованный chat_id
                 from_number: client.info?.wid?.user,
                 to_number: contact.number,
                 message_body: responseMessage,
                 message_type: 'text',
                 is_from_me: true, // Ответ агента = исходящее сообщение
                 is_group: isGroup,
-                group_id: isGroup ? message.from : undefined,
+                group_id: isGroup ? normalizedChatId : undefined, // Используем нормализованный
                 contact_name: contact.pushname || contact.name,
                 agent_id: agnoConfig.agent_id, // Добавляем agent_id
                 message_source: 'agno', // Ответ от AI агента
@@ -575,6 +582,9 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
     if (config.messageStorageService && config.instanceId) {
       const isGroup = message.to.includes('@g.us');
 
+      // Нормализуем chat_id для единого ID диалога
+      const normalizedChatId = normalizeChatId(message, client);
+
       // Получаем agent_id из конфигурации Agno
       let agentId: string | undefined;
       try {
@@ -588,14 +598,14 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
         await config.messageStorageService.saveMessage({
           instance_id: config.instanceId,
           message_id: message.id._serialized,
-          chat_id: message.from,
-          from_number: contact.number,
-          to_number: client.info?.wid?.user,
+          chat_id: normalizedChatId, // Используем нормализованный chat_id
+          from_number: client.info?.wid?.user, // Ваш номер - отправитель
+          to_number: contact.number, // Номер собеседника - получатель
           message_body: message.body,
           message_type: message.type,
           is_from_me: true, // Исходящее сообщение
           is_group: isGroup,
-          group_id: isGroup ? message.from : undefined,
+          group_id: isGroup ? normalizedChatId : undefined, // Используем нормализованный
           contact_name: contact.pushname || contact.name,
           agent_id: agentId, // Добавляем agent_id
           message_source: 'device', // Сообщение отправлено с устройства пользователя
@@ -724,6 +734,24 @@ function generateSessionId(agentId?: string, chatId?: string): string | undefine
   ].join('-');
 
   return uuid;
+}
+
+/**
+ * Нормализует chat_id для обеспечения единого ID диалога с собеседником
+ * @param message WhatsApp сообщение
+ * @param client WhatsApp клиент
+ * @returns нормализованный chat_id (ID собеседника)
+ */
+function normalizeChatId(message: Message, client: any): string {
+  const myNumber = client.info?.wid?.user;
+
+  if (message.fromMe) {
+    // Исходящее сообщение: собеседник это message.to
+    return message.to;
+  } else {
+    // Входящее сообщение: собеседник это message.from
+    return message.from;
+  }
 }
 
 /**

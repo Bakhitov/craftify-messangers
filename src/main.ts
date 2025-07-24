@@ -480,7 +480,10 @@ async function startWhatsAppApiServer(
   });
 }
 
-async function getTelegramApiKey(telegramConfig: TelegramConfig, _instanceId: string): Promise<string> {
+async function getTelegramApiKey(
+  telegramConfig: TelegramConfig,
+  _instanceId: string,
+): Promise<string> {
   // Если INSTANCE_ID передан через переменную окружения, пытаемся получить token из БД
   if (process.env.INSTANCE_ID) {
     try {

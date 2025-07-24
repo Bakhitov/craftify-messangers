@@ -16,6 +16,8 @@ import {
   SendMediaMessageResponse,
   TelegramSendMessageParams,
   TelegramChannelResponse,
+  BulkMessageRequest,
+  BulkMessageResponse,
 } from '../types';
 import { MessageStorageService, MessageData } from '../services/message-storage.service';
 import { webhookService } from '../services/webhook.service';
@@ -81,14 +83,14 @@ export class TelegramProvider extends BaseMessengerProvider {
           try {
             const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
             if (agnoConfig?.enabled) {
-                              // Генерируем session_id детерминированно из agent_id + chat_id
-                const chatId = ctx.chat?.id.toString() || '';
-                const sessionId = this.generateSessionId(agnoConfig.agent_id, chatId);
-              
+              // Генерируем session_id детерминированно из agent_id + chat_id
+              const chatId = ctx.chat?.id.toString() || '';
+              const sessionId = this.generateSessionId(agnoConfig.agent_id, chatId);
+
               // Обновляем конфигурацию с сгенерированным session_id
               const configWithSession = {
                 ...agnoConfig,
-                sessionId: sessionId
+                sessionId: sessionId,
               };
 
               // Получаем текст сообщения (включая описания медиа)
@@ -107,7 +109,7 @@ export class TelegramProvider extends BaseMessengerProvider {
                   const file = await ctx.api.getFile(photo.file_id);
                   const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
                   const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
-                  
+
                   const filename = `photo_${ctx.message.message_id}.jpg`;
                   agnoFiles.push({
                     buffer: Buffer.from(response.data),
@@ -115,9 +117,9 @@ export class TelegramProvider extends BaseMessengerProvider {
                     mimetype: 'image/jpeg',
                   });
 
-                  finalMessageText = ctx.message.caption ? 
-                    `${ctx.message.caption}\n\n[PHOTO: ${filename}]` : 
-                    `[PHOTO: ${filename}]`;
+                  finalMessageText = ctx.message.caption
+                    ? `${ctx.message.caption}\n\n[PHOTO: ${filename}]`
+                    : `[PHOTO: ${filename}]`;
                 } catch (error) {
                   this.logError('Failed to download Telegram photo for Agno', error);
                 }
@@ -128,7 +130,7 @@ export class TelegramProvider extends BaseMessengerProvider {
                   const file = await ctx.api.getFile(document.file_id);
                   const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
                   const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
-                  
+
                   const filename = document.file_name || `document_${ctx.message.message_id}`;
                   agnoFiles.push({
                     buffer: Buffer.from(response.data),
@@ -136,9 +138,9 @@ export class TelegramProvider extends BaseMessengerProvider {
                     mimetype: document.mime_type || 'application/octet-stream',
                   });
 
-                  finalMessageText = ctx.message.caption ? 
-                    `${ctx.message.caption}\n\n[DOCUMENT: ${filename}]` : 
-                    `[DOCUMENT: ${filename}]`;
+                  finalMessageText = ctx.message.caption
+                    ? `${ctx.message.caption}\n\n[DOCUMENT: ${filename}]`
+                    : `[DOCUMENT: ${filename}]`;
                 } catch (error) {
                   this.logError('Failed to download Telegram document for Agno', error);
                 }
@@ -149,7 +151,7 @@ export class TelegramProvider extends BaseMessengerProvider {
                   const file = await ctx.api.getFile(video.file_id);
                   const fileUrl = `https://api.telegram.org/file/bot${this.bot.token}/${file.file_path}`;
                   const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
-                  
+
                   const filename = `video_${ctx.message.message_id}.mp4`;
                   agnoFiles.push({
                     buffer: Buffer.from(response.data),
@@ -157,20 +159,20 @@ export class TelegramProvider extends BaseMessengerProvider {
                     mimetype: video.mime_type || 'video/mp4',
                   });
 
-                  finalMessageText = ctx.message.caption ? 
-                    `${ctx.message.caption}\n\n[VIDEO: ${filename}]` : 
-                    `[VIDEO: ${filename}]`;
+                  finalMessageText = ctx.message.caption
+                    ? `${ctx.message.caption}\n\n[VIDEO: ${filename}]`
+                    : `[VIDEO: ${filename}]`;
                 } catch (error) {
                   this.logError('Failed to download Telegram video for Agno', error);
                 }
               }
 
-                              // Отправляем сообщение агенту (с файлами если есть)
-                const agnoResponse = await this.agnoIntegrationService.sendToAgentWithFiles(
-                  finalMessageText,
-                  configWithSession,
-                  agnoFiles,
-                );
+              // Отправляем сообщение агенту (с файлами если есть)
+              const agnoResponse = await this.agnoIntegrationService.sendToAgentWithFiles(
+                finalMessageText,
+                configWithSession,
+                agnoFiles,
+              );
 
               // Если получили ответ от агента
               const responseMessage = agnoResponse?.content || agnoResponse?.message;
@@ -835,7 +837,7 @@ export class TelegramProvider extends BaseMessengerProvider {
 
     try {
       const botName = this.getBotName();
-      
+
       // Получаем agent_id из конфигурации Agno
       let agentId: string | undefined;
       try {
@@ -844,7 +846,7 @@ export class TelegramProvider extends BaseMessengerProvider {
       } catch (error) {
         this.logDebug('Could not get Agno config for storing message', { error });
       }
-      
+
       const messageData: MessageData = {
         instance_id: this.instanceId,
         message_id: message.id,
@@ -862,9 +864,7 @@ export class TelegramProvider extends BaseMessengerProvider {
         // Правильная логика для message_source:
         // - Входящие (fromMe: false) = всегда 'user'
         // - Исходящие (fromMe: true) = если есть agent_id то 'agno', иначе 'api'
-        message_source: message.fromMe 
-          ? (agentId ? 'agno' : 'api') 
-          : 'user',
+        message_source: message.fromMe ? (agentId ? 'agno' : 'api') : 'user',
         timestamp: new Date(message.timestamp).getTime(),
       };
 
@@ -879,7 +879,7 @@ export class TelegramProvider extends BaseMessengerProvider {
    */
   private getBotName(): string {
     if (!this.botInfo) return 'TelegramBot';
-    
+
     let name = '';
     if (this.botInfo.first_name) {
       name += this.botInfo.first_name;
@@ -887,7 +887,7 @@ export class TelegramProvider extends BaseMessengerProvider {
     if (this.botInfo.username) {
       name += ` (@${this.botInfo.username})`;
     }
-    
+
     return name.trim() || 'TelegramBot';
   }
 
@@ -942,21 +942,40 @@ export class TelegramProvider extends BaseMessengerProvider {
     if (!chatId) {
       return undefined;
     }
-    
+
     // Используем детерминированную генерацию UUID (такую же как в MessageStorageService)
     const crypto = require('crypto');
     const sessionString = agentId ? `session:${agentId}:${chatId}` : `session:${chatId}`;
     const hash = crypto.createHash('sha256').update(sessionString).digest('hex');
-    
+
     // Форматируем как UUID v4
     const uuid = [
       hash.substr(0, 8),
       hash.substr(8, 4),
       '4' + hash.substr(13, 3), // версия 4
       ((parseInt(hash.substr(16, 1), 16) & 0x3) | 0x8).toString(16) + hash.substr(17, 3), // вариант
-      hash.substr(20, 12)
+      hash.substr(20, 12),
     ].join('-');
-    
+
     return uuid;
+  }
+
+  async sendBulkMessages(request: BulkMessageRequest): Promise<BulkMessageResponse> {
+    const { bulkMessageService } = await import('../services/bulk-message.service');
+
+    // Функция отправки для конкретного провайдера
+    const sendMessageFn = async (
+      to: string,
+      message: string,
+    ): Promise<{ messageId?: string; error?: string }> => {
+      try {
+        const result = await this.sendMessage(to, message);
+        return { messageId: result.messageId };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
+      }
+    };
+
+    return await bulkMessageService.executeBulkMessage(request, sendMessageFn);
   }
 }

@@ -20,7 +20,6 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
   const originalEnd = res.end;
 
   // Use type assertion to avoid TypeScript errors with method override
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   res.end = function (chunk: any, encoding?: any, callback?: any): any {
     // Calculate response time
     const responseTime = Date.now() - start;

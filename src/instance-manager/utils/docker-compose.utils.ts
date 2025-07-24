@@ -43,7 +43,15 @@ export class DockerComposeGenerator {
 
       if (instance.provider === 'telegram') {
         mode = 'telegram-api'; // Используем правильный режим telegram-api
-        command = ['-m', mode, '--log-level', 'debug', '--api-port', instance.port_api.toString()];
+        command = [
+          '-m',
+          mode,
+          '--log-level',
+          'debug',
+          '--api-port',
+          instance.port_api.toString(),
+          ...(instance.token ? ['--telegram-bot-token', instance.token] : []),
+        ];
       } else {
         // Для whatsappweb и других провайдеров используем whatsapp-api
         mode = 'whatsapp-api';
@@ -97,14 +105,24 @@ export class DockerComposeGenerator {
           AGNO_ENABLED: process.env.AGNO_ENABLED || 'true',
           // Переменные для Supabase
           DATABASE_URL: process.env.DATABASE_URL,
-          DATABASE_HOST: process.env.DATABASE_HOST,
-          DATABASE_PORT: process.env.DATABASE_PORT,
-          DATABASE_NAME: process.env.DATABASE_NAME,
-          DATABASE_USER: process.env.DATABASE_USER,
-          DATABASE_PASSWORD: process.env.DATABASE_PASSWORD,
+          DATABASE_HOST: process.env.DATABASE_HOST || 'host.docker.internal',
+          DATABASE_PORT: process.env.DATABASE_PORT || '5432',
+          DATABASE_NAME: process.env.DATABASE_NAME || 'postgres',
+          DATABASE_USER: process.env.DATABASE_USER || 'postgres',
+          DATABASE_PASSWORD: process.env.DATABASE_PASSWORD || 'password',
           DATABASE_SCHEMA: process.env.DATABASE_SCHEMA || 'public',
-          DATABASE_SSL: process.env.DATABASE_SSL || 'true',
-          USE_SUPABASE: process.env.USE_SUPABASE || 'true',
+          DATABASE_SSL: process.env.DATABASE_SSL || 'false',
+          USE_SUPABASE: process.env.USE_SUPABASE || 'false',
+          // For Telegram provider
+          ...(instance.provider === 'telegram' &&
+            instance.token && {
+              TELEGRAM_BOT_TOKEN: instance.token,
+            }),
+          // For WhatsApp provider
+          ...(instance.provider === 'whatsappweb' &&
+            instance.api_key && {
+              WHATSAPP_API_KEY: instance.api_key,
+            }),
         },
       };
 
@@ -235,14 +253,14 @@ export class DockerComposeGenerator {
           AGNO_ENABLED: process.env.AGNO_ENABLED || 'true',
           // Переменные для Supabase
           DATABASE_URL: process.env.DATABASE_URL,
-          DATABASE_HOST: process.env.DATABASE_HOST,
-          DATABASE_PORT: process.env.DATABASE_PORT,
-          DATABASE_NAME: process.env.DATABASE_NAME,
-          DATABASE_USER: process.env.DATABASE_USER,
-          DATABASE_PASSWORD: process.env.DATABASE_PASSWORD,
+          DATABASE_HOST: process.env.DATABASE_HOST || 'host.docker.internal',
+          DATABASE_PORT: process.env.DATABASE_PORT || '5432',
+          DATABASE_NAME: process.env.DATABASE_NAME || 'postgres',
+          DATABASE_USER: process.env.DATABASE_USER || 'postgres',
+          DATABASE_PASSWORD: process.env.DATABASE_PASSWORD || 'password',
           DATABASE_SCHEMA: process.env.DATABASE_SCHEMA || 'public',
-          DATABASE_SSL: process.env.DATABASE_SSL || 'true',
-          USE_SUPABASE: process.env.USE_SUPABASE || 'true',
+          DATABASE_SSL: process.env.DATABASE_SSL || 'false',
+          USE_SUPABASE: process.env.USE_SUPABASE || 'false',
         },
       };
 

@@ -1,6 +1,6 @@
 import express, { Request, Response, Router, RequestHandler } from 'express';
 import { TelegramProvider } from './providers/telegram-provider';
-import { TelegramConfig } from './types';
+import { TelegramConfig, BulkMessageRequest } from './types';
 import { MessageStorageService } from './services/message-storage.service';
 import { instanceMemoryService } from './instance-manager/services/instance-memory.service';
 import logger from './logger';
@@ -513,6 +513,77 @@ export function telegramRouterFactory(
   router.post('/send', sendMessage);
   router.post('/send-telegram-message', sendTelegramMessage);
   router.post('/send-media', sendMediaMessage);
+
+  // Bulk message endpoint
+  router.post('/send-bulk', async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!telegramProvider) {
+        res.status(503).json({ error: 'Telegram provider not initialized' });
+        return;
+      }
+
+      const bulkRequest: BulkMessageRequest = req.body;
+
+      // Валидация
+      if (
+        !bulkRequest.recipients ||
+        !Array.isArray(bulkRequest.recipients) ||
+        bulkRequest.recipients.length === 0
+      ) {
+        res.status(400).json({
+          error: 'Recipients array is required and must not be empty',
+        });
+        return;
+      }
+
+      if (!bulkRequest.message || typeof bulkRequest.message !== 'string') {
+        res.status(400).json({
+          error: 'Message is required and must be a string',
+        });
+        return;
+      }
+
+      // Ограничение на количество получателей
+      if (bulkRequest.recipients.length > 100) {
+        res.status(400).json({
+          error: 'Maximum 100 recipients allowed per bulk message',
+        });
+        return;
+      }
+
+      // Валидация получателей
+      for (const recipient of bulkRequest.recipients) {
+        if (!recipient.to || typeof recipient.to !== 'string') {
+          res.status(400).json({
+            error: 'Each recipient must have a valid "to" field',
+          });
+          return;
+        }
+      }
+
+      if (instanceId) {
+        instanceMemoryService.markApiKeyUsage(instanceId);
+      }
+
+      // Выполняем массовую рассылку через Telegram провайдер
+      const result = await telegramProvider.sendBulkMessages(bulkRequest);
+
+      // Обновляем статистику отправленных сообщений
+      if (instanceId && result.successCount > 0) {
+        for (let i = 0; i < result.successCount; i++) {
+          instanceMemoryService.updateMessageStats(instanceId, 'sent');
+        }
+      }
+
+      res.json(result);
+    } catch (error) {
+      logger.error('Error in Telegram bulk message endpoint:', error);
+      res.status(500).json({
+        error: 'Failed to send bulk messages',
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
   router.get('/group/:groupId', getGroupById);
 
   // Роуты для управления polling

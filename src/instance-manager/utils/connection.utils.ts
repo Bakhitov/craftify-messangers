@@ -21,8 +21,7 @@ export class ConnectionUtils {
       return `http://${NamingUtils.getApiContainerName(instanceId)}:${port}`;
     } else {
       // Если Instance Manager на хосте, а контейнеры в Docker
-      // Используем host.docker.internal для доступа к хосту из контейнера
-      // Но для доступа с хоста к контейнеру используем localhost
+      // Используем localhost для доступа с хоста к контейнеру
       return `http://localhost:${port}`;
     }
   }
@@ -113,14 +112,32 @@ export class ConnectionUtils {
     // Затем проверяем, что API действительно отвечает
     try {
       const url = this.getApiUrl(instanceId, port);
-      const response = await fetch(`${url}/api/v1/telegram/health`, {
+
+      // Для проверки доступности используем простой health endpoint
+      // Он должен отвечать без авторизации
+      const response = await fetch(`${url}/api/v1/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(timeout),
       });
 
-      return response.ok;
+      // API считается доступным если он отвечает (даже со статусом 503 "unhealthy")
+      // Важно что сервер отвечает, а не конкретный статус
+      return response.status >= 200 && response.status < 600;
     } catch (error) {
-      return false;
+      // Если не получается проверить через /api/v1/health, пробуем другие endpoints
+      try {
+        const url = this.getApiUrl(instanceId, port);
+
+        // Для Telegram пробуем его специфичный health endpoint
+        const response = await fetch(`${url}/api/v1/telegram/health`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(timeout),
+        });
+
+        return response.status >= 200 && response.status < 600;
+      } catch {
+        return false;
+      }
     }
   }
 }

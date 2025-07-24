@@ -13,13 +13,12 @@ import {
   MediaResponse,
   SendMediaMessageParams,
   SendMediaMessageResponse,
+  BulkMessageRequest,
+  BulkMessageResponse,
 } from '../types';
 
 export class InstagramProvider extends BaseMessengerProvider {
-  constructor(
-    config: InstagramConfig,
-    messageStorageService?: MessageStorageService,
-  ) {
+  constructor(config: InstagramConfig, messageStorageService?: MessageStorageService) {
     super(config, messageStorageService);
   }
 
@@ -96,6 +95,10 @@ export class InstagramProvider extends BaseMessengerProvider {
   }
 
   async sendMediaMessage(_params: SendMediaMessageParams): Promise<SendMediaMessageResponse> {
+    throw new Error('Instagram provider not implemented');
+  }
+
+  async sendBulkMessages(_request: BulkMessageRequest): Promise<BulkMessageResponse> {
     throw new Error('Instagram provider not implemented');
   }
 }

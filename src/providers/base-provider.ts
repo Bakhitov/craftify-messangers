@@ -13,6 +13,8 @@ import {
   SendMediaMessageParams,
   SendMediaMessageResponse,
   MessengerProvider,
+  BulkMessageRequest,
+  BulkMessageResponse,
 } from '../types';
 import { MessageStorageService, MessageData } from '../services/message-storage.service';
 import logger from '../logger';
@@ -50,6 +52,7 @@ export abstract class BaseMessengerProvider extends EventEmitter {
   abstract getGroupById(groupId: string): Promise<GroupResponse | null>;
   abstract downloadMediaFromMessage(messageId: string): Promise<MediaResponse>;
   abstract sendMediaMessage(params: SendMediaMessageParams): Promise<SendMediaMessageResponse>;
+  abstract sendBulkMessages(request: BulkMessageRequest): Promise<BulkMessageResponse>;
 
   // Общие методы для всех провайдеров
   getProvider(): MessengerProvider {

@@ -68,13 +68,37 @@ export class InstanceMonitorService {
         };
       }
 
-      // Проверяем доступность API перед попыткой подключения
-      const apiAccessible = await ConnectionUtils.isApiAccessible(instance.id, instance.port_api);
+      // УЛУЧШЕНИЕ: Получаем предыдущий статус из памяти
+      const memoryData = instanceMemoryService.getInstance(instance.id);
+      const previousAuthStatus = memoryData?.auth_status || 'pending';
+
+      // Проверяем доступность API с увеличенным таймаутом
+      const apiAccessible = await ConnectionUtils.isApiAccessible(
+        instance.id,
+        instance.port_api,
+        10000,
+      ); // Увеличено до 10 секунд
       if (!apiAccessible) {
         instanceMemoryService.updateStatus(instance.id, 'start', {
           source: 'instance-monitor.service.ts:getAuthStatus',
           message: `API not accessible on port ${instance.port_api}, container may be starting`,
         });
+
+        // УЛУЧШЕНИЕ: Сохраняем стабильный статус если он был client_ready
+        if (previousAuthStatus === 'client_ready') {
+          logger.warn(
+            `API temporarily unavailable for instance ${instance.id}, keeping previous status: ${previousAuthStatus}`,
+          );
+          return {
+            auth_status: previousAuthStatus,
+            is_ready_for_messages: true,
+            whatsapp_state: memoryData?.whatsapp_state,
+            account: memoryData?.whatsapp_user?.account,
+            phone_number: memoryData?.whatsapp_user?.phone_number,
+            last_seen: new Date().toISOString(),
+          };
+        }
+
         return {
           auth_status: 'pending',
           is_ready_for_messages: false,
@@ -101,11 +125,12 @@ export class InstanceMonitorService {
         headers.Authorization = `Bearer ${instance.api_key}`;
       }
 
-      // Запрашиваем статус у API
+      // Запрашиваем статус у API с увеличенным таймаутом
       const apiUrl = ConnectionUtils.getApiUrl(instance.id, instance.port_api);
+      logger.debug(`Connecting to ${apiUrl}${statusEndpoint} for instance ${instance.id}`);
       const response = await axios.get(`${apiUrl}${statusEndpoint}`, {
         headers,
-        timeout: 5000,
+        timeout: 10000, // Увеличено до 10 секунд
       });
 
       const data = response.data;
@@ -182,7 +207,7 @@ export class InstanceMonitorService {
       instanceMemoryService.updateStatus(instance.id, memoryStatus, {
         source: 'instance-monitor.service.ts:getAuthStatus',
         message: `${instance.provider} state: ${providerState}`,
-        whatsapp_state: providerState,
+        whatsapp_state: instance.provider === 'whatsappweb' ? providerState : undefined,
       });
 
       // Отмечаем использование API ключа
@@ -190,7 +215,7 @@ export class InstanceMonitorService {
 
       return {
         auth_status: authStatus,
-        whatsapp_state: providerState,
+        whatsapp_state: instance.provider === 'whatsappweb' ? providerState : undefined,
         phone_number:
           instance.provider === 'telegram'
             ? data.info?.username
@@ -208,14 +233,17 @@ export class InstanceMonitorService {
       // Более детальная обработка ошибок
       let errorMessage = 'Unknown error';
       let shouldReturnPending = false;
+      let shouldPreservePreviousStatus = false;
 
       if (error instanceof Error) {
         if (error.message.includes('ECONNREFUSED')) {
           errorMessage = 'Connection refused - API server may be starting';
           shouldReturnPending = true;
+          shouldPreservePreviousStatus = true; // УЛУЧШЕНИЕ: сохраняем предыдущий статус при временных проблемах
         } else if (error.message.includes('timeout')) {
           errorMessage = 'Request timeout - API server may be overloaded';
           shouldReturnPending = true;
+          shouldPreservePreviousStatus = true; // УЛУЧШЕНИЕ: сохраняем предыдущий статус при таймаутах  
         } else if (error.message.includes('ENOTFOUND')) {
           errorMessage = 'Host not found - networking issue';
         } else {
@@ -224,7 +252,7 @@ export class InstanceMonitorService {
       }
 
       logger.error(`Failed to get auth status for instance ${instance.id}: ${errorMessage}`, error);
-      
+
       instanceMemoryService.registerError(
         instance.id,
         `Auth status check failed: ${errorMessage}`,
@@ -233,6 +261,24 @@ export class InstanceMonitorService {
           stack: error instanceof Error ? error.stack : undefined,
         },
       );
+
+      // УЛУЧШЕНИЕ: Сохраняем стабильный статус при временных проблемах
+      if (shouldPreservePreviousStatus) {
+        const memoryData = instanceMemoryService.getInstance(instance.id);
+        const previousAuthStatus = memoryData?.auth_status || 'pending';
+        
+        if (previousAuthStatus === 'client_ready') {
+          logger.warn(`Temporary error for instance ${instance.id}: ${errorMessage}, keeping previous status: ${previousAuthStatus}`);
+          return {
+            auth_status: previousAuthStatus,
+            is_ready_for_messages: true,
+            whatsapp_state: memoryData?.whatsapp_state,
+            account: memoryData?.whatsapp_user?.account,
+            phone_number: memoryData?.whatsapp_user?.phone_number,
+            last_seen: new Date().toISOString(),
+          };
+        }
+      }
 
       // Если это временная проблема подключения, возвращаем pending вместо failed
       if (shouldReturnPending) {
@@ -447,12 +493,32 @@ export class InstanceMonitorService {
           headers['Authorization'] = `Bearer ${instance.api_key}`;
         }
 
+        // Определяем правильный health endpoint в зависимости от провайдера
+        let healthEndpoint: string;
+        if (instance.provider === 'telegram') {
+          healthEndpoint = '/api/v1/telegram/health';
+        } else {
+          healthEndpoint = '/api/v1/health';
+        }
+
         const apiUrl = ConnectionUtils.getApiUrl(instance.id, instance.port_api);
-        const response = await axios.get(`${apiUrl}/api/v1/health`, {
-          headers,
+        const response = await axios.get(`${apiUrl}${healthEndpoint}`, {
           timeout: 5000,
         });
-        services.api = response.status === 200 && response.data.status === 'ok';
+
+        // ИСПРАВЛЕНИЕ: Принимаем HTTP 200 как признак что API сервер работает
+        // Даже если WhatsApp/Telegram клиент еще не готов ("unhealthy")
+        // Это позволяет Instance Manager не ждать 180 секунд
+        services.api =
+          response.status === 200 &&
+          (response.data.status === 'ok' ||
+            response.data.status === 'healthy' ||
+            response.data.status === 'unhealthy'); // <- ДОБАВЛЕНО
+
+        // Дополнительная проверка: если сервер отвечает, но статус неизвестен
+        if (response.status === 200 && !response.data.status) {
+          services.api = true; // HTTP сервер работает
+        }
       } catch (error) {
         services.api = false;
         allHealthy = false;
@@ -550,32 +616,47 @@ export class InstanceMonitorService {
         for (const instance of instances) {
           try {
             if (instance.type_instance.includes('api') && instance.port_api && instance.api_key) {
-              // Более гибкая логика пропуска экземпляров
-              if (instance.auth_status === 'failed' && instance.updated_at) {
-                const timeSinceUpdate = Date.now() - new Date(instance.updated_at).getTime();
-                const fiveMinutesMs = 5 * 60 * 1000;
+                          // Более гибкая логика пропуска экземпляров
+            if (instance.auth_status === 'failed' && instance.updated_at) {
+              const timeSinceUpdate = Date.now() - new Date(instance.updated_at).getTime();
+              const fiveMinutesMs = 5 * 60 * 1000;
 
-                // Пропускаем экземпляры со статусом 'failed', которые обновлялись недавно
-                if (timeSinceUpdate < fiveMinutesMs) {
-                  skippedCount++;
-                  continue;
-                }
+              // Пропускаем экземпляры со статусом 'failed', которые обновлялись недавно
+              if (timeSinceUpdate < fiveMinutesMs) {
+                skippedCount++;
+                continue;
               }
+            }
 
-              // Пропускаем экземпляры, которые были созданы менее 2 минут назад
-              // чтобы дать им время на запуск
-              if (instance.created_at) {
-                const timeSinceCreation = Date.now() - new Date(instance.created_at).getTime();
-                const twoMinutesMs = 2 * 60 * 1000;
+            // УЛУЧШЕНИЕ: Пропускаем стабильные client_ready инстансы, проверяем их реже
+            if (instance.auth_status === 'client_ready' && instance.updated_at) {
+              const timeSinceUpdate = Date.now() - new Date(instance.updated_at).getTime();
+              const tenMinutesMs = 10 * 60 * 1000;
 
-                                 if (timeSinceCreation < twoMinutesMs && instance.auth_status === 'pending') {
-                   logger.debug(
-                     `Skipping recently created instance ${instance.id} (${Math.round(timeSinceCreation / 1000)}s old)`,
-                   );
-                  skippedCount++;
-                  continue;
-                }
+              // Пропускаем стабильные client_ready инстансы, если они обновлялись недавно
+              if (timeSinceUpdate < tenMinutesMs) {
+                logger.debug(
+                  `Skipping stable client_ready instance ${instance.id} (last update ${Math.round(timeSinceUpdate / 1000)}s ago)`,
+                );
+                skippedCount++;
+                continue;
               }
+            }
+
+            // Пропускаем экземпляры, которые были созданы менее 3 минут назад
+            // чтобы дать им время на запуск
+            if (instance.created_at) {
+              const timeSinceCreation = Date.now() - new Date(instance.created_at).getTime();
+              const threeMinutesMs = 3 * 60 * 1000;
+
+              if (timeSinceCreation < threeMinutesMs && instance.auth_status === 'pending') {
+                logger.debug(
+                  `Skipping recently created instance ${instance.id} (${Math.round(timeSinceCreation / 1000)}s old)`,
+                );
+                skippedCount++;
+                continue;
+              }
+            }
 
               const updated = await this.updateAuthStatusInDatabase(instance);
               if (updated) {

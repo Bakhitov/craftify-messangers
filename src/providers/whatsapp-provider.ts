@@ -13,6 +13,8 @@ import {
   MediaResponse,
   SendMediaMessageParams,
   SendMediaMessageResponse,
+  BulkMessageRequest,
+  BulkMessageResponse,
 } from '../types';
 import { MessageStorageService } from '../services/message-storage.service';
 import { createWhatsAppClient } from '../whatsapp-client';
@@ -388,6 +390,25 @@ export class WhatsAppProvider extends BaseMessengerProvider {
     } catch (error) {
       this.handleError(error, 'sendMediaMessage');
     }
+  }
+
+  async sendBulkMessages(request: BulkMessageRequest): Promise<BulkMessageResponse> {
+    const { bulkMessageService } = await import('../services/bulk-message.service');
+
+    // Функция отправки для конкретного провайдера
+    const sendMessageFn = async (
+      to: string,
+      message: string,
+    ): Promise<{ messageId?: string; error?: string }> => {
+      try {
+        const result = await this.sendMessage(to, message);
+        return { messageId: result.messageId };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
+      }
+    };
+
+    return await bulkMessageService.executeBulkMessage(request, sendMessageFn);
   }
 
   private async convertWhatsAppMessage(message: Message): Promise<MessageResponse> {
