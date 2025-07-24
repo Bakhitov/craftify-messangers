@@ -46,7 +46,7 @@ export class NamingUtils {
 
   static getDockerLabels(
     instanceId: string,
-    userId: string,
+    companyId: string,
     provider: string,
     type: string,
   ): Record<string, string> {
@@ -54,7 +54,7 @@ export class NamingUtils {
       'wweb.instance.id': instanceId,
       'wweb.instance.type': type,
       'wweb.instance.provider': provider,
-      'wweb.instance.user_id': userId,
+      'wweb.instance.user_id': companyId, // Лейбл остается user_id для совместимости с Docker
     };
   }
 }

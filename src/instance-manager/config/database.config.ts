@@ -74,7 +74,7 @@ export const CREATE_SCHEMA_SQL = `
 export const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS public.message_instances (
     id UUID NOT NULL DEFAULT gen_random_uuid(),
-    user_id VARCHAR(255) NULL,
+    company_id VARCHAR(255) NULL,
     provider VARCHAR NOT NULL DEFAULT 'whatsappweb',
     type_instance VARCHAR[] NOT NULL DEFAULT ARRAY['api'],
     port_api INTEGER NULL,
@@ -94,7 +94,7 @@ export const CREATE_TABLE_SQL = `
     CONSTRAINT message_instances_pkey PRIMARY KEY (id)
   ) TABLESPACE pg_default;
 
-  CREATE INDEX IF NOT EXISTS idx_message_instances_user_id ON public.message_instances USING btree (user_id) TABLESPACE pg_default;
+  CREATE INDEX IF NOT EXISTS idx_message_instances_company_id ON public.message_instances USING btree (company_id) TABLESPACE pg_default;
   CREATE INDEX IF NOT EXISTS idx_message_instances_provider ON public.message_instances USING btree (provider) TABLESPACE pg_default;
   CREATE INDEX IF NOT EXISTS idx_message_instances_auth_status ON public.message_instances USING btree (auth_status) TABLESPACE pg_default;
   CREATE INDEX IF NOT EXISTS idx_message_instances_agno_config_enabled ON public.message_instances USING GIN ((agno_config->'enabled')) TABLESPACE pg_default;

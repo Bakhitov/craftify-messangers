@@ -68,7 +68,7 @@ export class DecisionService {
     // Проверяем метки
     for (const container of dockerState.containers) {
       if (
-        container.labels['wweb.instance.user_id'] !== dbInstance.user_id ||
+        container.labels['wweb.instance.user_id'] !== dbInstance.company_id ||
         container.labels['wweb.instance.provider'] !== dbInstance.provider
       ) {
         logger.debug('Container labels mismatch', {

@@ -85,7 +85,7 @@ export class DockerComposeGenerator {
         },
         labels: NamingUtils.getDockerLabels(
           instance.id,
-          instance.user_id || 'unknown',
+          instance.company_id || 'unknown',
           instance.provider,
           'api',
         ),
@@ -233,7 +233,7 @@ export class DockerComposeGenerator {
         },
         labels: NamingUtils.getDockerLabels(
           instance.id,
-          instance.user_id || 'unknown',
+          instance.company_id || 'unknown',
           instance.provider,
           'mcp',
         ),

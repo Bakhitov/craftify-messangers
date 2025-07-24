@@ -24,7 +24,7 @@ INSTANCES=$(curl -s "http://localhost:${INSTANCE_MANAGER_PORT}/api/v1/instances"
 if [ "$(echo "$INSTANCES" | jq length)" -eq 0 ]; then
   echo "   Экземпляры не найдены"
 else
-  echo "$INSTANCES" | jq -r '.[] | "   \(.id) | \(.user_id) | \(.status) | API: \(.api_port // "N/A") | MCP: \(.mcp_port // "N/A")"'
+  echo "$INSTANCES" | jq -r '.[] | "   \(.id) | \(.company_id) | \(.status) | API: \(.api_port // "N/A") | MCP: \(.mcp_port // "N/A")"'
 fi
 
 # Получение статистики портов

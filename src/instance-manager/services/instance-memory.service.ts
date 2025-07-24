@@ -5,7 +5,7 @@ import { createPool, getDatabaseConfig } from '../../config/database.config';
 export interface InstanceMemoryData {
   // Основная информация
   instance_id: string;
-  user_id: string;
+  user_id: string; // Остается user_id для внутреннего использования в памяти
   provider: string;
   type_instance: string[];
 
@@ -138,14 +138,17 @@ export class InstanceMemoryService extends EventEmitter {
   /**
    * Создает или обновляет данные инстанса в памяти
    */
-  setInstance(instanceId: string, data: Partial<InstanceMemoryData>): InstanceMemoryData {
+  setInstance(
+    instanceId: string,
+    data: Partial<InstanceMemoryData> & { company_id?: string },
+  ): InstanceMemoryData {
     const now = new Date();
     const existing = this.instances.get(instanceId);
 
     const instanceData: InstanceMemoryData = {
       // Значения по умолчанию
       instance_id: instanceId,
-      user_id: data.user_id || existing?.user_id || '',
+      user_id: data.company_id || existing?.user_id || '',
       provider: data.provider || existing?.provider || 'unknown',
       type_instance: data.type_instance || existing?.type_instance || ['api'],
 

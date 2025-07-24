@@ -98,7 +98,7 @@ cleanup_instances() {
     
     echo "📋 Найдены инстансы для удаления:"
     for instance_id in $instances; do
-        local instance_info=$(curl -s "$INSTANCE_MANAGER_URL/api/v1/instances/$instance_id" | jq -r '.instance | "\(.provider) | \(.status) | \(.user_id) | \(.created_at)"')
+        local instance_info=$(curl -s "$INSTANCE_MANAGER_URL/api/v1/instances/$instance_id" | jq -r '.instance | "\(.provider) | \(.status) | \(.company_id) | \(.created_at)"')
         echo "  - $instance_id: $instance_info"
     done
     
@@ -127,7 +127,7 @@ cleanup_instances() {
 
 # Интерактивная очистка
 interactive_cleanup() {
-    local all_instances=$(curl -s "$INSTANCE_MANAGER_URL/api/v1/instances" | jq -r '.instances[] | "\(.id)|\(.provider)|\(.status)|\(.user_id)|\(.created_at)"')
+    local all_instances=$(curl -s "$INSTANCE_MANAGER_URL/api/v1/instances" | jq -r '.instances[] | "\(.id)|\(.provider)|\(.status)|\(.company_id)|\(.created_at)"')
     
     echo "📋 Все инстансы:"
     echo "ID | Provider | Status | User ID | Created At"
@@ -197,7 +197,7 @@ dry_run() {
     
     echo "📋 Будут удалены следующие инстансы:"
     for instance_id in $instances; do
-        local instance_info=$(curl -s "$INSTANCE_MANAGER_URL/api/v1/instances/$instance_id" | jq -r '.instance | "\(.provider) | \(.status) | \(.user_id) | \(.created_at)"')
+        local instance_info=$(curl -s "$INSTANCE_MANAGER_URL/api/v1/instances/$instance_id" | jq -r '.instance | "\(.provider) | \(.status) | \(.company_id) | \(.created_at)"')
         echo "  - $instance_id: $instance_info"
     done
 }

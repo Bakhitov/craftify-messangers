@@ -30,13 +30,13 @@ instancesRouter.post(
   strictRateLimit.middleware(),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { user_id, provider, type_instance, config } = req.body;
+      const { company_id, provider, type_instance, config } = req.body;
 
       // Валидация обязательных полей
-      if (!user_id || !provider || !type_instance) {
+      if (!company_id || !provider || !type_instance) {
         res.status(400).json({
           success: false,
-          error: 'user_id, provider, and type_instance are required',
+          error: 'company_id, provider, and type_instance are required',
         });
         return;
       }
@@ -86,7 +86,7 @@ instancesRouter.post(
       // Создаем экземпляр в базе данных с поддержкой всех полей
       const instanceData = {
         id: instanceId,
-        user_id,
+        company_id,
         provider,
         type_instance,
         api_webhook_schema: req.body.api_webhook_schema || {},
@@ -160,7 +160,7 @@ instancesRouter.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const filters = {
-        user_id: req.query.user_id as string,
+        company_id: req.query.company_id as string,
         provider: req.query.provider as string,
       };
 

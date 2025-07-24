@@ -1,6 +1,6 @@
 export interface MessageInstance {
   id: string; // UUID
-  user_id?: string;
+  company_id?: string;
   provider: string;
   type_instance: string[];
   port_api?: number; // Назначается при создании

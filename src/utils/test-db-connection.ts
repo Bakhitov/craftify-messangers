@@ -130,7 +130,7 @@ export async function createTablesIfNotExists(): Promise<boolean> {
     await client.query(`
       CREATE TABLE IF NOT EXISTS public.message_instances (
         id UUID PRIMARY KEY,
-        user_id VARCHAR NOT NULL,
+        company_id VARCHAR NOT NULL,
         provider VARCHAR NOT NULL DEFAULT 'whatsappweb',
         type_instance VARCHAR[] NOT NULL DEFAULT ARRAY['api'],
         port_api INTEGER,
@@ -145,7 +145,7 @@ export async function createTablesIfNotExists(): Promise<boolean> {
 
     // Создаем индексы для message_instances
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_message_instances_user_id ON public.message_instances(user_id);
+      CREATE INDEX IF NOT EXISTS idx_message_instances_company_id ON public.message_instances(company_id);
       CREATE INDEX IF NOT EXISTS idx_message_instances_provider ON public.message_instances(provider);
     `);
 

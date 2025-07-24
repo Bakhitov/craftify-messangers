@@ -248,7 +248,7 @@ export class ProviderDatabaseService {
   /**
    * Получает все экземпляры для пользователя
    */
-  async getInstancesByUser(userId: string): Promise<ProviderInstanceData[]> {
+  async getInstancesByUser(companyId: string): Promise<ProviderInstanceData[]> {
     try {
       const instances: ProviderInstanceData[] = [];
       const providers: MessengerProvider[] = [
@@ -263,8 +263,8 @@ export class ProviderDatabaseService {
 
       for (const provider of providers) {
         const tableName = this.getTableName(provider);
-        const query = `SELECT * FROM public.${tableName} WHERE user_id = $1 ORDER BY created_at DESC`;
-        const result = await this.pool.query(query, [userId]);
+        const query = `SELECT * FROM public.${tableName} WHERE company_id = $1 ORDER BY created_at DESC`;
+        const result = await this.pool.query(query, [companyId]);
 
         for (const row of result.rows) {
           instances.push(this.mapDbRowToInstanceData(row, provider));
@@ -273,7 +273,7 @@ export class ProviderDatabaseService {
 
       return instances;
     } catch (error) {
-      logger.error(`Failed to get instances for user ${userId}:`, error);
+      logger.error(`Failed to get instances for user ${companyId}:`, error);
       throw error;
     }
   }

@@ -286,7 +286,7 @@ npm run start:instance-manager
 # Создание экземпляра
 POST /api/v1/instances
 {
-  "user_id": "user123",
+  "company_id": "user123",
   "type_instance": ["api", "mcp"]
 }
 

@@ -18,7 +18,7 @@ http://localhost:3000
 **Request Body:**
 ```json
 {
-  "user_id": "user-001",
+  "company_id": "user-001",
   "provider": "whatsappweb",
   "type_instance": ["api"],
   "api_webhook_schema": {
@@ -56,7 +56,7 @@ http://localhost:3000
 **Request Body:**
 ```json
 {
-  "user_id": "user-002",
+  "company_id": "user-002",
   "provider": "telegram",
   "type_instance": ["api"],
   "config": {
@@ -103,7 +103,7 @@ http://localhost:3000
   "data": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
-      "user_id": "user-001",
+      "company_id": "user-001",
       "provider": "whatsappweb",
       "type_instance": ["api"],
       "status": "client_ready",
@@ -129,7 +129,7 @@ http://localhost:3000
   "success": true,
   "data": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
-    "user_id": "user-001",
+    "company_id": "user-001",
     "provider": "whatsappweb",
     "type_instance": ["api"],
     "status": "client_ready",

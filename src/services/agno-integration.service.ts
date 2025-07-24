@@ -9,7 +9,7 @@ export interface AgnoConfig {
   stream: boolean;
   model?: string;
   agnoUrl: string;
-  userId?: string;
+  userId?: string; // Для отправки в Agno API как user_id, но берем из company_id
   sessionId?: string;
 }
 
@@ -34,7 +34,7 @@ export interface AgnoApiRequest {
   stream: boolean;
   monitor: boolean;
   model?: string;
-  user_id?: string;
+  user_id?: string; // Отправляется в Agno API как user_id, но значение берется из company_id
   session_id?: string;
   files?: Buffer[];
 }
@@ -82,7 +82,7 @@ export class AgnoIntegrationService {
       }
 
       const query = `
-        SELECT agno_config, user_id
+        SELECT agno_config, company_id
         FROM public.message_instances 
         WHERE id = $1 
           AND agno_config IS NOT NULL
@@ -98,7 +98,7 @@ export class AgnoIntegrationService {
 
       const row = result.rows[0];
       const agnoConfigJson = row.agno_config;
-      const userId = row.user_id;
+      const companyId = row.company_id;
 
       // Валидируем обязательные поля
       if (!agnoConfigJson.agnoUrl) {
@@ -118,7 +118,7 @@ export class AgnoIntegrationService {
         stream: agnoConfigJson.stream === true,
         model: agnoConfigJson.model || 'gpt-4.1',
         agnoUrl: agnoConfigJson.agnoUrl, // URL уже содержит agent_id
-        userId: userId, // Используем user_id из экземпляра, а не из agno_config
+        userId: companyId, // Используем company_id из экземпляра для отправки в Agno как user_id
         sessionId: undefined, // session_id будет устанавливаться в провайдерах
       };
 

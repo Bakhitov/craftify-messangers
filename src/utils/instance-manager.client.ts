@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import logger from '../logger';
 
 export interface CreateInstanceRequest {
-  user_id: string;
+  company_id: string;
   provider: 'whatsappweb' | 'telegram';
   type_instance: string[];
   config?: {
@@ -30,7 +30,7 @@ export interface CreateInstanceResponse {
 
 export interface InstanceInfo {
   id: string;
-  user_id: string;
+  company_id: string;
   provider: string;
   type_instance: string[];
   status: string;
@@ -161,7 +161,7 @@ export class InstanceManagerClient {
   ): Promise<string> {
     try {
       const requestData: CreateInstanceRequest = {
-        user_id: userId,
+        company_id: userId,
         provider: 'whatsappweb',
         type_instance: ['api'],
         api_webhook_schema: webhookConfig
@@ -218,7 +218,7 @@ export class InstanceManagerClient {
   ): Promise<string> {
     try {
       const requestData: CreateInstanceRequest = {
-        user_id: userId,
+        company_id: userId,
         provider: 'telegram',
         type_instance: ['api'],
         config: {

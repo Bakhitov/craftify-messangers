@@ -92,7 +92,7 @@ export class DatabaseService {
       for (const instance of instances) {
         // Добавляем экземпляр в память
         instanceMemoryService.setInstance(instance.id, {
-          user_id: instance.user_id,
+          user_id: instance.company_id,
           provider: instance.provider,
           type_instance: instance.type_instance,
           ports: {
@@ -139,16 +139,16 @@ export class DatabaseService {
   }
 
   async getAllInstances(filters?: {
-    user_id?: string;
+    company_id?: string;
     provider?: string;
   }): Promise<MessageInstance[]> {
     let query = 'SELECT * FROM public.message_instances WHERE 1=1';
     const params: unknown[] = [];
     let paramIndex = 1;
 
-    if (filters?.user_id) {
-      query += ` AND user_id = $${paramIndex}`;
-      params.push(filters.user_id);
+    if (filters?.company_id) {
+      query += ` AND company_id = $${paramIndex}`;
+      params.push(filters.company_id);
       paramIndex++;
     }
 
@@ -177,7 +177,7 @@ export class DatabaseService {
 
     // Список разрешенных полей для обновления (исключаем удаленные поля)
     const allowedFields = [
-      'user_id',
+      'company_id',
       'provider',
       'type_instance',
       'port_api',
@@ -260,14 +260,14 @@ export class DatabaseService {
     return result.rows;
   }
 
-  async countInstances(filters?: { user_id?: string; provider?: string }): Promise<number> {
+  async countInstances(filters?: { company_id?: string; provider?: string }): Promise<number> {
     let query = 'SELECT COUNT(*) as count FROM public.message_instances WHERE 1=1';
     const params: unknown[] = [];
     let paramIndex = 1;
 
-    if (filters?.user_id) {
-      query += ` AND user_id = $${paramIndex}`;
-      params.push(filters.user_id);
+    if (filters?.company_id) {
+      query += ` AND company_id = $${paramIndex}`;
+      params.push(filters.company_id);
       paramIndex++;
     }
 
@@ -291,7 +291,7 @@ export class DatabaseService {
 
   async createInstance(instanceData: {
     id: string;
-    user_id: string;
+    company_id: string;
     provider: string;
     type_instance: string[];
     api_webhook_schema?: object;
@@ -303,7 +303,7 @@ export class DatabaseService {
   }): Promise<MessageInstance> {
     const query = `
       INSERT INTO public.message_instances (
-        id, user_id, provider, type_instance, api_webhook_schema, mcp_schema, 
+        id, company_id, provider, type_instance, api_webhook_schema, mcp_schema, 
         api_key, token, auth_status, agno_config, created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
       RETURNING *
@@ -311,7 +311,7 @@ export class DatabaseService {
 
     const values = [
       instanceData.id,
-      instanceData.user_id,
+      instanceData.company_id,
       instanceData.provider,
       instanceData.type_instance,
       JSON.stringify(instanceData.api_webhook_schema || {}),
