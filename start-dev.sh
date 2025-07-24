@@ -37,7 +37,7 @@ get_external_ip() {
     return 1
 }
 
-echo -e "${BLUE}🚀 Запуск DEVELOPMENT окружения с Supabase Cloud${NC}"
+echo -e "${BLUE}🚀 Запуск DEVELOPMENT окружения через Docker с Supabase Cloud${NC}"
 echo "================================================="
 
 # Определяем внешний IP-адрес
@@ -69,20 +69,12 @@ if ! docker ps > /dev/null 2>&1; then
 fi
 echo -e "${GREEN}✅ Docker доступен${NC}"
 
-# Проверка Node.js
-if ! command -v node &> /dev/null; then
-    echo -e "${RED}❌ Node.js не установлен${NC}"
+# Проверка Docker Compose
+if ! docker-compose --version > /dev/null 2>&1; then
+    echo -e "${RED}❌ Docker Compose не доступен${NC}"
     exit 1
 fi
-echo -e "${GREEN}✅ Node.js $(node -v) доступен${NC}"
-
-# Проверка pnpm
-if ! command -v pnpm &> /dev/null; then
-    echo -e "${RED}❌ pnpm не установлен${NC}"
-    echo "Установите pnpm: npm install -g pnpm"
-    exit 1
-fi
-echo -e "${GREEN}✅ pnpm доступен${NC}"
+echo -e "${GREEN}✅ Docker Compose доступен${NC}"
 
 # Настройка конфигурации
 echo -e "${YELLOW}⚙️ Настройка development конфигурации...${NC}"
@@ -126,45 +118,27 @@ else
 fi
 
 # Обновляем путь к Docker socket для текущего пользователя (macOS)
-COLIMA_SOCKET_MISSING=false
 if [[ "$OSTYPE" == "darwin"* ]]; then
     USER_HOME=$(eval echo ~$USER)
     if [ -f "$USER_HOME/.colima/default/docker.sock" ]; then
-        sed -i '' "s|DOCKER_SOCKET_PATH=.*|DOCKER_SOCKET_PATH=$USER_HOME/.colima/default/docker.sock|g" .env
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|DOCKER_SOCKET_PATH=.*|DOCKER_SOCKET_PATH=$USER_HOME/.colima/default/docker.sock|g" .env
+        else
+            sed -i "s|DOCKER_SOCKET_PATH=.*|DOCKER_SOCKET_PATH=$USER_HOME/.colima/default/docker.sock|g" .env
+        fi
         echo -e "${GREEN}✅ Обновлен путь к Docker socket для Colima: $USER_HOME/.colima/default/docker.sock${NC}"
     else
         echo -e "${YELLOW}⚠️ Colima socket не найден, используется стандартный Docker socket${NC}"
-        COLIMA_SOCKET_MISSING=true
     fi
 fi
-
-# Сборка проекта
-echo -e "${YELLOW}🔧 Сборка проекта...${NC}"
-
-# Устанавливаем все зависимости
-echo "📦 Установка зависимостей..."
-pnpm install --no-frozen-lockfile
-echo -e "${GREEN}✅ Зависимости установлены${NC}"
-
-# Сборка проекта
-echo "🔨 Сборка TypeScript..."
-pnpm run build
-
-# Сборка Docker образов
-echo -e "${YELLOW}🐳 Сборка Docker образов...${NC}"
-docker build -t wweb-mcp:latest .
-echo -e "${GREEN}✅ Основной Docker образ wweb-mcp:latest собран${NC}"
-
-docker build -f Dockerfile.instance-manager -t wweb-mcp-instance-manager:latest .
-echo -e "${GREEN}✅ Instance Manager Docker образ собран${NC}"
 
 # Создание необходимых директорий
 echo -e "${YELLOW}📁 Создание директорий...${NC}"
 mkdir -p composes volumes logs
 echo -e "${GREEN}✅ Директории созданы${NC}"
 
-# Проверка базы данных
-echo -e "${YELLOW}🗄️ Проверка подключения к Supabase...${NC}"
+# Проверка конфигурации базы данных
+echo -e "${YELLOW}🗄️ Проверка конфигурации Supabase...${NC}"
 
 # Загружаем переменные из .env для проверки
 source .env
@@ -200,6 +174,7 @@ fi
 # Остановка существующих контейнеров
 echo -e "${YELLOW}🛑 Остановка существующих контейнеров...${NC}"
 docker-compose -f docker-compose.instance-manager.yml down 2>/dev/null || true
+docker-compose down 2>/dev/null || true
 
 # Создание или проверка Docker сети для инстансов
 echo -e "${YELLOW}🌐 Создание Docker сети для инстансов...${NC}"
@@ -225,56 +200,54 @@ else
     fi
 fi
 
-# Определение режима запуска Instance Manager
-DOCKER_CONTEXT=$(docker context show)
-USE_HOST_MODE=false
+# Опция: запуск через Docker или локально
+echo -e "${YELLOW}🚀 Выберите способ запуска Instance Manager:${NC}"
+echo "1. Docker (может быть проблема с Colima socket)"
+echo "2. Локально на хосте (рекомендуется для development)"
+read -p "Выберите вариант (1/2) [2]: " LAUNCH_MODE
+LAUNCH_MODE=${LAUNCH_MODE:-2}
 
-# Автоматическое определение проблем с Colima
-if [[ "$OSTYPE" == "darwin"* ]] && ([[ "$DOCKER_CONTEXT" == "colima" ]] || [ "$COLIMA_SOCKET_MISSING" = true ]); then
-    echo -e "${YELLOW}⚠️ Обнаружена проблема с Colima на macOS${NC}"
-    if [ "$COLIMA_SOCKET_MISSING" = true ]; then
-        echo -e "${YELLOW}⚠️ Colima socket недоступен${NC}"
-    fi
-    if [[ "$DOCKER_CONTEXT" == "colima" ]]; then
-        echo -e "${YELLOW}⚠️ Colima имеет проблемы с Docker socket из контейнеров${NC}"
-    fi
-    echo -e "${BLUE}💡 Автоматически переключаемся на запуск Instance Manager на хосте${NC}"
-    USE_HOST_MODE=true
-    echo ""
-fi
-
-# Запуск Instance Manager
-if [ "$USE_HOST_MODE" = true ]; then
-    echo -e "${YELLOW}🚀 Запуск Instance Manager на хосте...${NC}"
-    
-    # Экспорт переменных окружения
-    export $(grep -v '^#' .env | xargs)
-    
-    # Проверка что порт свободен
-    if lsof -i :3000 > /dev/null 2>&1; then
-        echo -e "${YELLOW}⚠️ Порт 3000 занят, останавливаем процесс...${NC}"
-        pkill -f "main-instance-manager.js" || true
-        sleep 2
-    fi
-    
-    # Запуск в background
-    echo -e "${BLUE}🔄 Запуск Instance Manager в background режиме...${NC}"
-    nohup node dist/main-instance-manager.js > instance-manager.log 2>&1 &
-    IM_PID=$!
-    echo "Instance Manager запущен (PID: $IM_PID)"
-    
-    # Ожидание запуска
-    echo -e "${YELLOW}⏳ Ожидание запуска Instance Manager...${NC}"
-    sleep 5
-    
-else
-    echo -e "${YELLOW}🚀 Запуск Instance Manager в Docker контейнере...${NC}"
+if [ "$LAUNCH_MODE" = "1" ]; then
+    echo -e "${YELLOW}🚀 Сборка и запуск Instance Manager через Docker Compose...${NC}"
     docker-compose -f docker-compose.instance-manager.yml up -d --build
+else
+    echo -e "${YELLOW}🚀 Запуск Instance Manager локально на хосте...${NC}"
     
-    # Ожидание запуска
-    echo -e "${YELLOW}⏳ Ожидание запуска сервисов...${NC}"
-    sleep 15
+    # Проверка Node.js и pnpm
+    if ! command -v node &> /dev/null; then
+        echo -e "${RED}❌ Node.js не установлен${NC}"
+        exit 1
+    fi
+    
+    if ! command -v pnpm &> /dev/null; then
+        echo -e "${YELLOW}📦 Установка pnpm...${NC}"
+        npm install -g pnpm
+    fi
+    
+    # Установка зависимостей и сборка
+    echo -e "${YELLOW}📦 Установка зависимостей...${NC}"
+    pnpm install
+    
+    echo -e "${YELLOW}🔨 Сборка проекта...${NC}"
+    pnpm run build
+    
+    # Остановка контейнера если запущен
+    docker-compose -f docker-compose.instance-manager.yml down 2>/dev/null || true
+    
+    # Запуск на хосте
+    echo -e "${YELLOW}🚀 Запуск Instance Manager на хосте...${NC}"
+    NODE_ENV=development node dist/main-instance-manager.js &
+    INSTANCE_MANAGER_PID=$!
+    echo "Instance Manager PID: $INSTANCE_MANAGER_PID"
+    echo "$INSTANCE_MANAGER_PID" > .instance-manager.pid
 fi
+
+# Ожидание запуска с прогресс-индикатором
+echo -e "${YELLOW}⏳ Ожидание запуска Instance Manager (это может занять до 1 минуты)...${NC}"
+echo -e "${BLUE}💡 Instance Manager имеет медленный старт сервера${NC}"
+
+# Задержка на 1 минуту как указано в правилах пользователя
+sleep 60
 
 # Проверка статуса
 echo -e "${YELLOW}🔍 Проверка статуса Instance Manager...${NC}"
@@ -294,11 +267,8 @@ done
 
 if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
     echo -e "${RED}❌ Instance Manager не отвечает после $MAX_RETRIES попыток${NC}"
-    if [ "$USE_HOST_MODE" = true ]; then
-        echo "Проверьте логи: tail -f instance-manager.log"
-    else
-        echo "Проверьте логи: docker logs wweb-mcp-instance-manager-1 -f"
-    fi
+    echo "Проверьте логи: docker logs wweb-mcp-instance-manager-1 -f"
+    echo "Или проверьте статус контейнера: docker ps -a"
     exit 1
 fi
 
@@ -312,20 +282,8 @@ else
     echo "Ответ health check: $HEALTH_RESPONSE"
 fi
 
-# Запуск TypeScript watch (опционально)
 echo ""
-read -p "Запустить TypeScript watch для hot reload? (y/n): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}🔄 Запуск TypeScript watch...${NC}"
-    pnpm run build:watch &
-    TS_PID=$!
-    echo "TypeScript watch запущен (PID: $TS_PID)"
-    echo "Для остановки: kill $TS_PID"
-fi
-
-echo ""
-echo -e "${GREEN}🎉 Development окружение запущено!${NC}"
+echo -e "${GREEN}🎉 Development окружение запущено через Docker!${NC}"
 echo "================================================="
 echo -e "${BLUE}📋 Информация о сервисах:${NC}"
 echo ""
@@ -346,17 +304,13 @@ if [[ "$EXTERNAL_IP" != "localhost" ]]; then
     echo "  Убедитесь что порт 3000 открыт в файрволе"
     echo ""
 fi
-echo -e "${GREEN}🔧 Команды для разработки:${NC}"
-if [ "$USE_HOST_MODE" = true ]; then
-    echo "  Логи Instance Manager: tail -f instance-manager.log"
-    echo "  Остановка Instance Manager: pkill -f main-instance-manager.js"
-    echo "  Перезапуск: pkill -f main-instance-manager.js && nohup node dist/main-instance-manager.js > instance-manager.log 2>&1 &"
-else
-    echo "  Логи Instance Manager: docker logs wweb-mcp-instance-manager-1 -f"
-    echo "  Перезапуск:            docker-compose -f docker-compose.instance-manager.yml restart"
-    echo "  Остановка:             docker-compose -f docker-compose.instance-manager.yml down"
-    echo "  Пересборка:            docker-compose -f docker-compose.instance-manager.yml up -d --build"
-fi
+echo -e "${GREEN}🔧 Docker команды для разработки:${NC}"
+echo "  Логи Instance Manager:    docker logs wweb-mcp-instance-manager-1 -f"
+echo "  Статус контейнеров:       docker ps -a"
+echo "  Перезапуск:              docker-compose -f docker-compose.instance-manager.yml restart"
+echo "  Остановка:               docker-compose -f docker-compose.instance-manager.yml down"
+echo "  Пересборка:              docker-compose -f docker-compose.instance-manager.yml up -d --build"
+echo "  Запуск всех сервисов:    docker-compose up -d --build"
 echo ""
 echo "  Создать WhatsApp инстанс:"
 echo "    curl -X POST http://localhost:3000/api/v1/instances \\"
@@ -382,10 +336,5 @@ echo "  Документация API: README.md"
 echo "  Тестирование: TESTING_GUIDE_NEW.md"
 echo "  Supabase миграция: SUPABASE_MIGRATION_COMPLETED.md"
 echo ""
-if [ "$USE_HOST_MODE" = true ]; then
-    echo -e "${YELLOW}💡 Для остановки Instance Manager выполните:${NC}"
-    echo "pkill -f main-instance-manager.js"
-else
-    echo -e "${YELLOW}💡 Для остановки нажмите Ctrl+C и выполните:${NC}"
-    echo "docker-compose -f docker-compose.instance-manager.yml down"
-fi 
+echo -e "${YELLOW}💡 Для остановки всех сервисов выполните:${NC}"
+echo "docker-compose -f docker-compose.instance-manager.yml down && docker-compose down" 

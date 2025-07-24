@@ -98,6 +98,35 @@ export class PortManager {
     try {
       await client.query('BEGIN');
 
+      // Сначала проверяем, существует ли инстанс
+      const checkQuery = `SELECT id FROM ${this.schema}.message_instances WHERE id = $1`;
+      const checkResult = await client.query(checkQuery, [instanceId]);
+      
+      if (checkResult.rowCount === 0) {
+        // Добавляем более подробное логирование
+        logger.error(`Instance ${instanceId} not found in database during port assignment`, {
+          schema: this.schema,
+          type: type,
+          query: checkQuery
+        });
+        
+        // Попробуем найти инстанс без схемы для диагностики
+        const debugQuery = `SELECT id, created_at FROM message_instances WHERE id = $1`;
+        const debugResult = await client.query(debugQuery, [instanceId]).catch(err => {
+          logger.error('Debug query failed:', err);
+          return { rows: [] };
+        });
+        
+        if (debugResult.rows.length > 0) {
+          logger.error(`Instance found in different schema!`, {
+            instance: debugResult.rows[0],
+            expectedSchema: this.schema
+          });
+        }
+        
+        throw new Error(`Instance ${instanceId} not found in database for port assignment`);
+      }
+
       // Получаем список занятых портов с блокировкой
       const usedPorts = await this.getUsedPortsWithLock(client);
 
@@ -124,6 +153,13 @@ export class PortManager {
         type === 'api'
           ? `UPDATE ${this.schema}.message_instances SET port_api = $1, updated_at = NOW() WHERE id = $2`
           : `UPDATE ${this.schema}.message_instances SET port_mcp = $1, updated_at = NOW() WHERE id = $2`;
+
+      logger.debug(`Executing port update`, {
+        instanceId,
+        port,
+        type,
+        query: updateQuery
+      });
 
       const updateResult = await client.query(updateQuery, [port, instanceId]);
 

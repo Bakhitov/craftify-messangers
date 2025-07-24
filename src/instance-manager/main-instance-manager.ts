@@ -150,7 +150,7 @@ async function main(): Promise<void> {
     // Запуск сервиса обновления статусов аутентификации только если Docker доступен
     let statusUpdateInterval: NodeJS.Timeout | null = null;
     if (dockerAvailable) {
-      const updateInterval = 120000; // 120 секунд (увеличено до 2 минут для снижения нагрузки на стабильные инстансы)
+      const updateInterval = 15000; // 15 секунд для быстрого обновления статусов в БД
       statusUpdateInterval = await instanceMonitorService.startStatusUpdateInterval(updateInterval);
       logger.info(`✅ Auth status update service started (interval: ${updateInterval}ms)`);
     } else {

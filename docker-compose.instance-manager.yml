@@ -7,9 +7,10 @@ services:
       dockerfile: Dockerfile.instance-manager
     container_name: wweb-mcp-instance-manager-1
     privileged: true
-    # Используем host network для максимальной совместимости с Docker socket
-    # и для доступа по внешнему IP без дополнительной настройки портов
-    network_mode: host
+    ports:
+      - "3000:3000"
+    networks:
+      - wweb-network
     logging:
       driver: "json-file"
       options:
@@ -41,6 +42,7 @@ services:
       - USE_SUPABASE=${USE_SUPABASE:-true}
       # Docker настройки - внутри контейнера всегда /var/run/docker.sock
       - DOCKER_SOCKET_PATH=/var/run/docker.sock
+      - DOCKER_HOST=unix:///var/run/docker.sock
       # Instance Manager настройки
       - BASE_PORT_RANGE_START=${BASE_PORT_RANGE_START:-3001}
       - BASE_PORT_RANGE_END=${BASE_PORT_RANGE_END:-7999}
@@ -54,6 +56,20 @@ services:
       - AGNO_API_TIMEOUT=${AGNO_API_TIMEOUT:-10000}
       - AGNO_ENABLED=${AGNO_ENABLED:-false}
     command: >
-      sh -c "chmod 666 /var/run/docker.sock 2>/dev/null || true && 
-             node dist/main-instance-manager.js"
-    restart: unless-stopped 
+      sh -c "
+        echo 'Checking Docker socket permissions...' &&
+        ls -la /var/run/docker.sock &&
+        echo 'Changing socket permissions...' &&
+        chmod 666 /var/run/docker.sock 2>/dev/null || true &&
+        echo 'Testing Docker CLI...' &&
+        docker --version 2>/dev/null || echo 'Docker CLI not available' &&
+        echo 'Testing Docker connection...' &&
+        docker info 2>/dev/null || echo 'Docker daemon not accessible' &&
+        echo 'Starting Instance Manager...' &&
+        node dist/main-instance-manager.js
+      "
+          restart: unless-stopped
+
+networks:
+  wweb-network:
+    external: true 

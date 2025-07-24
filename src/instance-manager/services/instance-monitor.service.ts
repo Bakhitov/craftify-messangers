@@ -169,11 +169,14 @@ export class InstanceMonitorService {
         }
       } else {
         // Логика для WhatsApp
-        if (data.state === 'READY' && data.info?.me) {
+        if (
+          (data.state === 'READY' && data.info?.me) ||
+          (data.status === 'connected' && data.info?.me)
+        ) {
           authStatus = 'client_ready';
           memoryStatus = 'client_ready';
           isReady = true;
-          providerState = data.state;
+          providerState = data.state || 'READY';
 
           // Сохраняем информацию о пользователе
           instanceMemoryService.markClientReady(instance.id);
@@ -243,7 +246,7 @@ export class InstanceMonitorService {
         } else if (error.message.includes('timeout')) {
           errorMessage = 'Request timeout - API server may be overloaded';
           shouldReturnPending = true;
-          shouldPreservePreviousStatus = true; // УЛУЧШЕНИЕ: сохраняем предыдущий статус при таймаутах  
+          shouldPreservePreviousStatus = true; // УЛУЧШЕНИЕ: сохраняем предыдущий статус при таймаутах
         } else if (error.message.includes('ENOTFOUND')) {
           errorMessage = 'Host not found - networking issue';
         } else {
@@ -266,9 +269,11 @@ export class InstanceMonitorService {
       if (shouldPreservePreviousStatus) {
         const memoryData = instanceMemoryService.getInstance(instance.id);
         const previousAuthStatus = memoryData?.auth_status || 'pending';
-        
+
         if (previousAuthStatus === 'client_ready') {
-          logger.warn(`Temporary error for instance ${instance.id}: ${errorMessage}, keeping previous status: ${previousAuthStatus}`);
+          logger.warn(
+            `Temporary error for instance ${instance.id}: ${errorMessage}, keeping previous status: ${previousAuthStatus}`,
+          );
           return {
             auth_status: previousAuthStatus,
             is_ready_for_messages: true,
@@ -616,47 +621,47 @@ export class InstanceMonitorService {
         for (const instance of instances) {
           try {
             if (instance.type_instance.includes('api') && instance.port_api && instance.api_key) {
-                          // Более гибкая логика пропуска экземпляров
-            if (instance.auth_status === 'failed' && instance.updated_at) {
-              const timeSinceUpdate = Date.now() - new Date(instance.updated_at).getTime();
-              const fiveMinutesMs = 5 * 60 * 1000;
+              // Более гибкая логика пропуска экземпляров
+              if (instance.auth_status === 'failed' && instance.updated_at) {
+                const timeSinceUpdate = Date.now() - new Date(instance.updated_at).getTime();
+                const fiveMinutesMs = 5 * 60 * 1000;
 
-              // Пропускаем экземпляры со статусом 'failed', которые обновлялись недавно
-              if (timeSinceUpdate < fiveMinutesMs) {
-                skippedCount++;
-                continue;
+                // Пропускаем экземпляры со статусом 'failed', которые обновлялись недавно
+                if (timeSinceUpdate < fiveMinutesMs) {
+                  skippedCount++;
+                  continue;
+                }
               }
-            }
 
-            // УЛУЧШЕНИЕ: Пропускаем стабильные client_ready инстансы, проверяем их реже
-            if (instance.auth_status === 'client_ready' && instance.updated_at) {
-              const timeSinceUpdate = Date.now() - new Date(instance.updated_at).getTime();
-              const tenMinutesMs = 10 * 60 * 1000;
+              // УЛУЧШЕНИЕ: Пропускаем стабильные client_ready инстансы, проверяем их реже
+              if (instance.auth_status === 'client_ready' && instance.updated_at) {
+                const timeSinceUpdate = Date.now() - new Date(instance.updated_at).getTime();
+                const tenMinutesMs = 10 * 60 * 1000;
 
-              // Пропускаем стабильные client_ready инстансы, если они обновлялись недавно
-              if (timeSinceUpdate < tenMinutesMs) {
-                logger.debug(
-                  `Skipping stable client_ready instance ${instance.id} (last update ${Math.round(timeSinceUpdate / 1000)}s ago)`,
-                );
-                skippedCount++;
-                continue;
+                // Пропускаем стабильные client_ready инстансы, если они обновлялись недавно
+                if (timeSinceUpdate < tenMinutesMs) {
+                  logger.debug(
+                    `Skipping stable client_ready instance ${instance.id} (last update ${Math.round(timeSinceUpdate / 1000)}s ago)`,
+                  );
+                  skippedCount++;
+                  continue;
+                }
               }
-            }
 
-            // Пропускаем экземпляры, которые были созданы менее 3 минут назад
-            // чтобы дать им время на запуск
-            if (instance.created_at) {
-              const timeSinceCreation = Date.now() - new Date(instance.created_at).getTime();
-              const threeMinutesMs = 3 * 60 * 1000;
+              // Пропускаем экземпляры, которые были созданы менее 3 минут назад
+              // чтобы дать им время на запуск
+              if (instance.created_at) {
+                const timeSinceCreation = Date.now() - new Date(instance.created_at).getTime();
+                const threeMinutesMs = 3 * 60 * 1000;
 
-              if (timeSinceCreation < threeMinutesMs && instance.auth_status === 'pending') {
-                logger.debug(
-                  `Skipping recently created instance ${instance.id} (${Math.round(timeSinceCreation / 1000)}s old)`,
-                );
-                skippedCount++;
-                continue;
+                if (timeSinceCreation < threeMinutesMs && instance.auth_status === 'pending') {
+                  logger.debug(
+                    `Skipping recently created instance ${instance.id} (${Math.round(timeSinceCreation / 1000)}s old)`,
+                  );
+                  skippedCount++;
+                  continue;
+                }
               }
-            }
 
               const updated = await this.updateAuthStatusInDatabase(instance);
               if (updated) {

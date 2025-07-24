@@ -244,6 +244,10 @@ export class WhatsAppService {
         // Добавляем в исключения для предотвращения дублирования
         if (this.client.addApiMessageId && result && result.id && result.id._serialized) {
           this.client.addApiMessageId(result.id._serialized);
+          logger.debug('API message added to tracking set', {
+            messageId: result.id._serialized,
+            apiSetSize: (this.client as any).apiMessageIds?.size || 'unknown'
+          });
         }
       } catch (error) {
         logger.error('Failed to send API message', {
@@ -259,45 +263,14 @@ export class WhatsAppService {
         throw ApiError.internal('WhatsApp sendMessage returned invalid result structure');
       }
 
-      logger.debug('Outgoing message sent', {
+      logger.debug('API message sent successfully', {
         to: number,
         messageLength: message.length,
         messageId: result.id._serialized,
       });
 
-      // Сохраняем исходящее сообщение в базу данных
-      if (this.messageStorageService && this.instanceId) {
-        // Получаем agent_id из конфигурации Agno для API сообщений
-        let agentId: string | undefined;
-        try {
-          const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
-          agentId = agnoConfig?.agent_id;
-        } catch (error) {
-          // Игнорируем ошибки получения agent_id
-        }
-
-        try {
-          await this.messageStorageService.saveMessage({
-            instance_id: this.instanceId,
-            message_id: result.id._serialized,
-            chat_id: chatId,
-            from_number: this.client.info?.wid?.user,
-            to_number: number,
-            message_body: message,
-            message_type: 'text',
-            is_group: false,
-            contact_name: undefined,
-            agent_id: agentId, // ✅ Теперь передается agent_id для API сообщений
-            message_source: 'api',
-            timestamp: Date.now(),
-          });
-        } catch (error) {
-          logger.error('Failed to save outgoing message to database', {
-            error: error instanceof Error ? error.message : String(error),
-            messageId: result.id._serialized,
-          });
-        }
-      }
+      // НЕ сохраняем сообщение здесь - это делает message_create обработчик
+      // с правильным определением источника (api/agno/device)
 
       return {
         messageId: result.id._serialized,

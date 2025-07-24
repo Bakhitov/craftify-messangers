@@ -99,6 +99,11 @@ instancesRouter.post(
 
       await databaseService.createInstance(instanceData);
 
+      // Добавляем задержку для завершения транзакции
+      // В production увеличиваем задержку из-за возможных сетевых задержек
+      const delay = process.env.NODE_ENV === 'production' ? 300 : 100;
+      await new Promise(resolve => setTimeout(resolve, delay));
+
       // Запускаем обработку экземпляра асинхронно в фоне
       processingService
         .processInstance(instanceId)

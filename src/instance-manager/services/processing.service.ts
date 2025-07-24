@@ -33,41 +33,64 @@ export class ProcessingService {
     logger.info(`Processing instance ${instanceId}`, { forceRecreate });
 
     try {
-      // Получаем инстанс из БД
-      const instance = await this.databaseService.getInstanceById(instanceId);
-      if (!instance) {
-        throw new Error(`Instance ${instanceId} not found in database`);
+      // Получаем инстанс из БД с retry логикой
+      let instance: MessageInstance | null = null;
+      // В production больше попыток из-за возможных сетевых задержек
+      const maxRetries = process.env.NODE_ENV === 'production' ? 10 : 5;
+      const retryDelay = process.env.NODE_ENV === 'production' ? 500 : 200; // миллисекунды
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        instance = await this.databaseService.getInstanceById(instanceId);
+
+        if (instance) {
+          logger.debug(`Found instance ${instanceId} on attempt ${attempt}`);
+          break;
+        }
+
+        if (attempt < maxRetries) {
+          logger.warn(`Instance ${instanceId} not found on attempt ${attempt}, retrying...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+        }
       }
+
+      if (!instance) {
+        throw new Error(
+          `Instance ${instanceId} not found in database after ${maxRetries} attempts`,
+        );
+      }
+
+      // После этой проверки TypeScript знает что instance не null
+      const instanceData: MessageInstance = instance;
 
       // Получаем текущее состояние в Docker
       const dockerState = await this.dockerService.getComposeStatus(instanceId);
 
       // Принимаем решение о действии
-      const decision = await this.decisionService.decide(instance, dockerState, forceRecreate);
+      const decision = await this.decisionService.decide(instanceData, dockerState, forceRecreate);
       logger.info(`Decision for instance ${instanceId}: ${decision.action}`, {
         reason: decision.reason,
       });
 
       // Начальное значение API ключа
-      let apiKey = instance.api_key || instanceId;
+      let apiKey = instanceData.api_key || instanceId;
 
       // Выполняем действие
       switch (decision.action) {
         case 'create':
           // Назначаем порты если их нет
           const needsPorts =
-            (instance.type_instance.includes('api') && !instance.port_api) ||
-            (instance.type_instance.includes('mcp') && !instance.port_mcp);
+            (instanceData.type_instance.includes('api') && !instanceData.port_api) ||
+            (instanceData.type_instance.includes('mcp') && !instanceData.port_mcp);
 
           if (needsPorts) {
             try {
               const ports = await this.performanceMonitor.trackPortAssignment(
-                () => this.portManager.assignPorts(instanceId, instance.type_instance),
+                () => this.portManager.assignPorts(instanceId, instanceData.type_instance),
                 instanceId,
               );
               // Порты уже сохранены в базе данных атомарно
-              if (ports.api) instance.port_api = ports.api;
-              if (ports.mcp) instance.port_mcp = ports.mcp;
+              if (ports.api) instanceData.port_api = ports.api;
+              if (ports.mcp) instanceData.port_mcp = ports.mcp;
             } catch (error) {
               logger.error(`Failed to assign ports for instance ${instanceId}`, error);
               throw new Error(`Port assignment failed: ${(error as Error).message}`);
@@ -75,12 +98,12 @@ export class ProcessingService {
           }
 
           // Создаем инстанс
-          await this.composeService.createInstance(instance);
+          await this.composeService.createInstance(instanceData);
 
           // Проверяем готовность API и получаем реальный API ключ
-          if (instance.type_instance.includes('api')) {
+          if (instanceData.type_instance.includes('api')) {
             const extractedApiKey = await this.composeService.waitForApiReady(
-              instance,
+              instanceData,
               3, // 9 секунд
               async (newApiKey: string) => {
                 // Обновляем API ключ в базе данных только если он отличается от instanceId
@@ -89,7 +112,7 @@ export class ProcessingService {
                     api_key: newApiKey,
                     api_key_generated_at: new Date(),
                   });
-                  instance.api_key = newApiKey; // Обновляем локальную копию
+                  instanceData.api_key = newApiKey; // Обновляем локальную копию
                 } else {
                   // Если API ключ равен instanceId, просто обновляем время генерации
                   await this.databaseService.updateInstance(instanceId, {
@@ -104,7 +127,7 @@ export class ProcessingService {
                 });
 
                 // Обновляем MCP конфигурацию с новым API ключом
-                if (instance.type_instance.includes('mcp')) {
+                if (instanceData.type_instance.includes('mcp')) {
                   await this.composeService.updateApiKeyInCompose(instanceId, newApiKey);
                 }
               },
@@ -112,7 +135,7 @@ export class ProcessingService {
 
             if (extractedApiKey && extractedApiKey !== instanceId) {
               // Обновляем API ключ в базе данных если он еще не был обновлен
-              if (extractedApiKey !== instance.api_key) {
+              if (extractedApiKey !== instanceData.api_key) {
                 await this.databaseService.updateInstance(instanceId, { api_key: extractedApiKey });
               }
               apiKey = extractedApiKey;
@@ -121,7 +144,7 @@ export class ProcessingService {
               );
 
               // Обновляем MCP конфигурацию с новым API ключом
-              if (instance.type_instance.includes('mcp')) {
+              if (instanceData.type_instance.includes('mcp')) {
                 await this.composeService.updateApiKeyInCompose(instanceId, extractedApiKey);
               }
             }
@@ -129,16 +152,16 @@ export class ProcessingService {
           break;
 
         case 'update':
-          await this.composeService.updateInstance(instance);
+          await this.composeService.updateInstance(instanceData);
           break;
 
         case 'recreate':
-          await this.composeService.recreateInstance(instance);
+          await this.composeService.recreateInstance(instanceData);
 
           // Проверяем готовность API и получаем реальный API ключ
-          if (instance.type_instance.includes('api')) {
+          if (instanceData.type_instance.includes('api')) {
             const extractedApiKey = await this.composeService.waitForApiReady(
-              instance,
+              instanceData,
               3, // 9 секунд
               async (newApiKey: string) => {
                 // Обновляем API ключ в базе данных только если он отличается от instanceId
@@ -147,7 +170,7 @@ export class ProcessingService {
                     api_key: newApiKey,
                     api_key_generated_at: new Date(),
                   });
-                  instance.api_key = newApiKey; // Обновляем локальную копию
+                  instanceData.api_key = newApiKey; // Обновляем локальную копию
                 } else {
                   // Если API ключ равен instanceId, просто обновляем время генерации
                   await this.databaseService.updateInstance(instanceId, {
@@ -162,7 +185,7 @@ export class ProcessingService {
                 });
 
                 // Обновляем MCP конфигурацию с новым API ключом
-                if (instance.type_instance.includes('mcp')) {
+                if (instanceData.type_instance.includes('mcp')) {
                   await this.composeService.updateApiKeyInCompose(instanceId, newApiKey);
                 }
               },
@@ -170,7 +193,7 @@ export class ProcessingService {
 
             if (extractedApiKey && extractedApiKey !== instanceId) {
               // Обновляем API ключ в базе данных если он еще не был обновлен
-              if (extractedApiKey !== instance.api_key) {
+              if (extractedApiKey !== instanceData.api_key) {
                 await this.databaseService.updateInstance(instanceId, { api_key: extractedApiKey });
               }
               apiKey = extractedApiKey;
@@ -179,7 +202,7 @@ export class ProcessingService {
               );
 
               // Обновляем MCP конфигурацию с новым API ключом
-              if (instance.type_instance.includes('mcp')) {
+              if (instanceData.type_instance.includes('mcp')) {
                 await this.composeService.updateApiKeyInCompose(instanceId, extractedApiKey);
               }
             }
@@ -190,9 +213,9 @@ export class ProcessingService {
           await this.composeService.startInstance(instanceId);
 
           // Проверяем готовность API и получаем реальный API ключ
-          if (instance.type_instance.includes('api')) {
+          if (instanceData.type_instance.includes('api')) {
             const extractedApiKey = await this.composeService.waitForApiReady(
-              instance,
+              instanceData,
               3, // 9 секунд
               async (newApiKey: string) => {
                 // Обновляем API ключ в базе данных только если он отличается от instanceId
@@ -201,7 +224,7 @@ export class ProcessingService {
                     api_key: newApiKey,
                     api_key_generated_at: new Date(),
                   });
-                  instance.api_key = newApiKey; // Обновляем локальную копию
+                  instanceData.api_key = newApiKey; // Обновляем локальную копию
                 } else {
                   // Если API ключ равен instanceId, просто обновляем время генерации
                   await this.databaseService.updateInstance(instanceId, {
@@ -216,7 +239,7 @@ export class ProcessingService {
                 });
 
                 // Обновляем MCP конфигурацию с новым API ключом
-                if (instance.type_instance.includes('mcp')) {
+                if (instanceData.type_instance.includes('mcp')) {
                   await this.composeService.updateApiKeyInCompose(instanceId, newApiKey);
                 }
               },
@@ -225,10 +248,10 @@ export class ProcessingService {
             if (
               extractedApiKey &&
               extractedApiKey !== instanceId &&
-              extractedApiKey !== instance.api_key
+              extractedApiKey !== instanceData.api_key
             ) {
               // Обновляем API ключ в базе данных если он еще не был обновлен
-              if (extractedApiKey !== instance.api_key) {
+              if (extractedApiKey !== instanceData.api_key) {
                 await this.databaseService.updateInstance(instanceId, { api_key: extractedApiKey });
               }
               apiKey = extractedApiKey;
@@ -237,7 +260,7 @@ export class ProcessingService {
               );
 
               // Обновляем MCP конфигурацию с новым API ключом
-              if (instance.type_instance.includes('mcp')) {
+              if (instanceData.type_instance.includes('mcp')) {
                 await this.composeService.updateApiKeyInCompose(instanceId, extractedApiKey);
               }
             }
@@ -255,10 +278,13 @@ export class ProcessingService {
         instance_id: instanceId,
         action: decision.action,
         details: {
-          display_name: NamingUtils.getDisplayName(instance.provider, instance.type_instance),
+          display_name: NamingUtils.getDisplayName(
+            instanceData.provider,
+            instanceData.type_instance,
+          ),
           ports: {
-            api: instance.port_api,
-            mcp: instance.port_mcp,
+            api: instanceData.port_api,
+            mcp: instanceData.port_mcp,
           },
           api_key: apiKey,
           auth_status: 'pending',
@@ -267,14 +293,29 @@ export class ProcessingService {
         message: this.getActionMessage(decision.action),
       };
 
-      // Получаем актуальный статус аутентификации после создания/обновления инстанса
+      // ✅ ИСПРАВЛЕНИЕ №1: Немедленная проверка после запуска API
       if (
         ['create', 'recreate', 'start'].includes(decision.action) &&
-        instance.type_instance.includes('api')
+        instanceData.type_instance.includes('api')
       ) {
         try {
-          // Ждем немного, чтобы API успел запуститься полностью
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          // ✅ УНИВЕРСАЛЬНОЕ РЕШЕНИЕ: Увеличенное время ожидания для надежности
+          await new Promise(resolve => setTimeout(resolve, 5000)); // +2 секунды для WhatsApp
+
+          // ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Загружаем СВЕЖИЕ данные из БД
+          const freshInstanceData = await this.databaseService.getInstanceById(instanceId);
+          if (!freshInstanceData) {
+            logger.warn(`Instance ${instanceId} not found after creation`);
+            return response;
+          }
+
+          logger.debug(`Fresh instance data loaded for ${instanceId}`, {
+            has_api_key: !!freshInstanceData.api_key,
+            api_key_preview: freshInstanceData.api_key?.substring(0, 16) + '...',
+            auth_status: freshInstanceData.auth_status,
+            provider: freshInstanceData.provider,
+            source: 'ProcessingService:universalFix',
+          });
 
           // Создаем экземпляр InstanceMonitorService
           const instanceMonitorService = new InstanceMonitorService(
@@ -282,22 +323,22 @@ export class ProcessingService {
             this.databaseService,
           );
 
-          // Получаем актуальный статус аутентификации
-          const authStatus = await instanceMonitorService.getAuthStatus(instance);
+          // ✅ ИСПОЛЬЗУЕМ СВЕЖИЕ ДАННЫЕ вместо устаревших instanceData
+          const authStatus = await instanceMonitorService.getAuthStatus(freshInstanceData);
 
           if (authStatus && authStatus.auth_status !== 'failed') {
             // Обновляем статус в ответе
             response.details.auth_status = authStatus.auth_status;
 
-            // Обновляем статус в базе данных через updateAuthStatusInDatabase
-            await instanceMonitorService.updateAuthStatusInDatabase(instance);
+            // ✅ НЕМЕДЛЕННОЕ обновление БД без debounce
+            await instanceMonitorService.updateAuthStatusInDatabase(freshInstanceData);
 
             logger.info(
-              `Updated auth status for instance ${instanceId}: ${authStatus.auth_status}`,
+              `✅ IMMEDIATE auth status update for instance ${instanceId}: ${authStatus.auth_status} (used fresh data)`,
             );
           }
         } catch (error) {
-          logger.warn(`Failed to update auth status for instance ${instanceId}`, error);
+          logger.warn(`Failed to immediate update auth status for instance ${instanceId}`, error);
           // Не прерываем выполнение в случае ошибки получения статуса
         }
       }

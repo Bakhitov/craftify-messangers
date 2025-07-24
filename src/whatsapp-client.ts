@@ -561,7 +561,7 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
     }
   });
 
-  // Handle outgoing messages (sent from device)
+  // Handle outgoing messages (sent by the user)
   client.on('message_create', async (message: Message) => {
     // Only process messages sent by the user (fromMe = true)
     if (!message.fromMe) {
@@ -594,6 +594,35 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
         // Игнорируем ошибки получения agent_id
       }
 
+      // Определяем источник сообщения
+      let messageSource: 'api' | 'agno' | 'device' = 'device';
+      
+      // Проверяем если это API сообщение
+      if (apiMessageIds.has(message.id._serialized)) {
+        messageSource = 'api';
+        apiMessageIds.delete(message.id._serialized); // Удаляем из множества
+        logger.debug('Identified API message', {
+          messageId: message.id._serialized,
+          source: 'api'
+        });
+      }
+      // Проверяем если это Agno сообщение
+      else if (agnoMessageIds.has(message.id._serialized)) {
+        messageSource = 'agno';
+        agnoMessageIds.delete(message.id._serialized); // Удаляем из множества
+        logger.debug('Identified Agno message', {
+          messageId: message.id._serialized,
+          source: 'agno'
+        });
+      }
+      // Иначе это сообщение с устройства пользователя
+      else {
+        logger.debug('Identified device message', {
+          messageId: message.id._serialized,
+          source: 'device'
+        });
+      }
+
       try {
         await config.messageStorageService.saveMessage({
           instance_id: config.instanceId,
@@ -608,7 +637,7 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
           group_id: isGroup ? normalizedChatId : undefined, // Используем нормализованный
           contact_name: contact.pushname || contact.name,
           agent_id: agentId, // Добавляем agent_id
-          message_source: 'device', // Сообщение отправлено с устройства пользователя
+          message_source: messageSource, // Правильный источник сообщения
           timestamp: message.timestamp,
         });
 
@@ -617,6 +646,7 @@ export function createWhatsAppClient(config: WhatsAppConfig = {}): Client & Exte
           instanceId: config.instanceId,
           to: contact.number,
           isGroup,
+          messageSource, // Добавляем в лог для отладки
         });
       } catch (error) {
         logger.error('Failed to save outgoing message to database', {
