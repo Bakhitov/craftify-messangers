@@ -24,6 +24,9 @@ import fs from 'fs';
 import mime from 'mime-types';
 import { ApiError } from './errors/api-error';
 import { MessageStorageService } from './services/message-storage.service';
+import { BulkMessageService } from './services/bulk-message.service';
+import { AgnoIntegrationService } from './services/agno-integration.service';
+import { createPool } from './config/database.config';
 
 // Интерфейсы для типизации WhatsApp API результатов
 interface RawChatData {
@@ -43,11 +46,18 @@ export class WhatsAppService {
   private client: Client & ExtendedClient;
   private messageStorageService?: MessageStorageService;
   private instanceId?: string;
+  private readonly bulkMessageService: BulkMessageService;
+  private readonly agnoIntegrationService: AgnoIntegrationService;
 
   constructor(client: Client, messageStorageService?: MessageStorageService, instanceId?: string) {
     this.client = client as Client & ExtendedClient;
     this.messageStorageService = messageStorageService;
     this.instanceId = instanceId;
+    this.bulkMessageService = new BulkMessageService();
+
+    // Создаем AgnoIntegrationService для получения agent_id
+    const pool = createPool();
+    this.agnoIntegrationService = new AgnoIntegrationService(pool);
   }
 
   async getStatus(): Promise<StatusResponse> {
@@ -257,6 +267,15 @@ export class WhatsAppService {
 
       // Сохраняем исходящее сообщение в базу данных
       if (this.messageStorageService && this.instanceId) {
+        // Получаем agent_id из конфигурации Agno для API сообщений
+        let agentId: string | undefined;
+        try {
+          const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
+          agentId = agnoConfig?.agent_id;
+        } catch (error) {
+          // Игнорируем ошибки получения agent_id
+        }
+
         try {
           await this.messageStorageService.saveMessage({
             instance_id: this.instanceId,
@@ -268,6 +287,7 @@ export class WhatsAppService {
             message_type: 'text',
             is_group: false,
             contact_name: undefined,
+            agent_id: agentId, // ✅ Теперь передается agent_id для API сообщений
             message_source: 'api',
             timestamp: Date.now(),
           });
@@ -754,8 +774,6 @@ export class WhatsAppService {
   }
 
   async sendBulkMessages(request: BulkMessageRequest): Promise<BulkMessageResponse> {
-    const { bulkMessageService } = await import('./services/bulk-message.service');
-
     // Функция отправки для WhatsApp через этот сервис
     const sendMessageFn = async (
       to: string,
@@ -769,6 +787,6 @@ export class WhatsAppService {
       }
     };
 
-    return await bulkMessageService.executeBulkMessage(request, sendMessageFn);
+    return await this.bulkMessageService.executeBulkMessage(request, sendMessageFn);
   }
 }

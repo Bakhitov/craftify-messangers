@@ -1,5 +1,6 @@
 import winston from 'winston';
 import util from 'util';
+import path from 'path';
 
 // Define log levels
 const levels = {
@@ -35,6 +36,12 @@ const consoleFormat = winston.format.combine(
   winston.format.printf(info => `${info.timestamp} ${info.level}: ${info.message}`),
 );
 
+// Define the format for file output (without colors)
+const fileFormat = winston.format.combine(
+  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
+  winston.format.printf(info => `${info.timestamp} ${info.level}: ${info.message}`),
+);
+
 // Create transports
 const transports: winston.transport[] = [
   // Console transport
@@ -43,6 +50,33 @@ const transports: winston.transport[] = [
     stderrLevels: ['error', 'warn'],
   }),
 ];
+
+// Add file transport for instance manager logs
+// Логи пишутся в файл в двух случаях:
+// 1. При запуске в Docker контейнере (DOCKER_CONTAINER=true)
+// 2. При прямом запуске instance manager на хосте
+const shouldWriteToFile =
+  process.env.DOCKER_CONTAINER === 'true' ||
+  process.argv[1]?.includes('main-instance-manager') ||
+  process.env.INSTANCE_MANAGER_MODE === 'true';
+
+if (shouldWriteToFile) {
+  // Создаем директорию логов если её нет
+  const logsDir = path.join(process.cwd(), 'logs');
+  if (!require('fs').existsSync(logsDir)) {
+    require('fs').mkdirSync(logsDir, { recursive: true });
+  }
+
+  transports.push(
+    new winston.transports.File({
+      filename: path.join(logsDir, 'instance-manager.log'),
+      format: fileFormat,
+      maxsize: 100 * 1024 * 1024, // 100MB
+      maxFiles: 5, // Храним 5 файлов
+      tailable: true, // Новые логи в конец
+    }),
+  );
+}
 
 // Create the logger
 const logger = winston.createLogger({

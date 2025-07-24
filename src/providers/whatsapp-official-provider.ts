@@ -234,6 +234,20 @@ export class WhatsAppOfficialProvider extends EventEmitter {
 
       const messageId = response.data.messages[0].id;
 
+      // Получаем agent_id из конфигурации Agno для API сообщений
+      let agentId: string | undefined;
+      try {
+        if (this.config.instanceId) {
+          const agnoIntegrationService = new (
+            await import('../services/agno-integration.service')
+          ).AgnoIntegrationService((await import('../config/database.config')).createPool());
+          const agnoConfig = await agnoIntegrationService.getAgnoConfig(this.config.instanceId);
+          agentId = agnoConfig?.agent_id;
+        }
+      } catch (error) {
+        // Игнорируем ошибки получения agent_id
+      }
+
       // Сохраняем исходящее сообщение в БД
       const messageData: MessageData = {
         instance_id: this.config.instanceId || '',
@@ -247,6 +261,8 @@ export class WhatsAppOfficialProvider extends EventEmitter {
         is_from_me: true,
         is_group: false,
         contact_name: to,
+        agent_id: agentId, // ✅ Теперь передается agent_id для API сообщений
+        message_source: 'api', // Указываем источник как API
       };
 
       await this.messageStorageService.saveMessage(messageData);

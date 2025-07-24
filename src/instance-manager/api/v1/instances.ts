@@ -99,14 +99,22 @@ instancesRouter.post(
 
       await databaseService.createInstance(instanceData);
 
-      // Сразу запускаем обработку экземпляра
-      const processResult = await processingService.processInstance(instanceId);
+      // Запускаем обработку экземпляра асинхронно в фоне
+      processingService
+        .processInstance(instanceId)
+        .then(processResult => {
+          logger.info(`Instance ${instanceId} processing completed:`, processResult);
+        })
+        .catch(error => {
+          logger.error(`Instance ${instanceId} processing failed:`, error);
+        });
 
       res.status(201).json({
         success: true,
         instance_id: instanceId,
-        message: 'Instance created and processing started',
-        process_result: processResult,
+        message: 'Instance created successfully, processing started in background',
+        status_check_url: `http://localhost:3000/api/v1/instances/${instanceId}/auth-status`,
+        api_endpoint: `http://localhost:3000/api/v1/instances/${instanceId}`,
       });
     } catch (error: any) {
       logger.error('Failed to create instance', error);
@@ -961,7 +969,6 @@ instancesRouter.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { instance_ids } = req.query;
-      
       let instanceIds: string[] | undefined;
       if (instance_ids) {
         if (typeof instance_ids === 'string') {

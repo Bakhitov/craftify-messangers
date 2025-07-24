@@ -414,6 +414,15 @@ export class TelegramProvider extends BaseMessengerProvider {
 
       // Сохранить исходящее сообщение в БД
       if (this.messageStorageService && this.instanceId) {
+        // Получаем agent_id из конфигурации Agno для API сообщений
+        let agentId: string | undefined;
+        try {
+          const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
+          agentId = agnoConfig?.agent_id;
+        } catch (error) {
+          // Игнорируем ошибки получения agent_id
+        }
+
         const botName = this.getBotName();
         await this.messageStorageService.saveMessage({
           instance_id: this.instanceId,
@@ -427,6 +436,7 @@ export class TelegramProvider extends BaseMessengerProvider {
           is_group: to.startsWith('-'),
           group_id: to.startsWith('-') ? to : undefined,
           contact_name: await this.getContactName(to),
+          agent_id: agentId, // ✅ Теперь передается agent_id для API сообщений
           message_source: 'api', // Сообщение отправлено через API
           timestamp: Date.now(),
         });
@@ -435,6 +445,7 @@ export class TelegramProvider extends BaseMessengerProvider {
           messageId: result.message_id,
           chatId: to,
           instanceId: this.instanceId,
+          agentId, // Добавляем в лог для отладки
         });
       }
 
@@ -465,6 +476,15 @@ export class TelegramProvider extends BaseMessengerProvider {
 
       // Сохранить исходящее сообщение в БД
       if (this.messageStorageService && this.instanceId) {
+        // Получаем agent_id из конфигурации Agno для API сообщений
+        let agentId: string | undefined;
+        try {
+          const agnoConfig = await this.agnoIntegrationService.getAgnoConfig(this.instanceId);
+          agentId = agnoConfig?.agent_id;
+        } catch (error) {
+          // Игнорируем ошибки получения agent_id
+        }
+
         await this.messageStorageService.saveMessage({
           instance_id: this.instanceId,
           message_id: result.message_id.toString(),
@@ -476,6 +496,7 @@ export class TelegramProvider extends BaseMessengerProvider {
           is_group: params.chatId.toString().startsWith('-'),
           group_id: params.chatId.toString().startsWith('-') ? params.chatId.toString() : undefined,
           contact_name: await this.getContactName(params.chatId.toString()),
+          agent_id: agentId, // ✅ Теперь передается agent_id для API сообщений
           message_source: 'api', // Сообщение отправлено через API
           timestamp: Date.now(),
         });
@@ -484,6 +505,7 @@ export class TelegramProvider extends BaseMessengerProvider {
           messageId: result.message_id,
           chatId: params.chatId,
           instanceId: this.instanceId,
+          agentId, // Добавляем в лог для отладки
         });
       }
 
