@@ -3510,3 +3510,95 @@ GET /api/v1/logs/health
 **Статус**: ✅ **РЕАЛИЗОВАНО** - API endpoints готовы к использованию
 
 ---
+
+## [Migration 010] - 2025-01-15
+
+### 🚀 MAJOR FEATURE: Migration user_id → company_id
+
+#### ✨ Added
+- **SQL Migration 010**: `db/migrations/versions/010_rename_user_id_to_company_id.sql`
+  - Safe conditional migration with transaction support
+  - Handles all provider tables (whatsappweb, telegram, etc.)
+  - Updates indexes and comments
+
+- **Migration Scripts**:
+  - `scripts/apply-migration-010.sh` - Apply database migration
+  - `scripts/cleanup-all-instances.sh` - Full container cleanup
+  - `scripts/full-migration-010.sh` - Complete automated migration
+
+- **Documentation**: `MIGRATION_010_SUMMARY.md` - Complete migration guide
+
+#### 🔄 Changed
+- **API Endpoints**: All endpoints now use `company_id` instead of `user_id`
+  - `POST /api/v1/instances` - Request body uses `company_id`
+  - `GET /api/v1/instances` - Filter parameter uses `company_id`
+  
+- **Database Schema**: 
+  - Column `user_id` → `company_id` in `message_instances` table
+  - Index `idx_message_instances_user_id` → `idx_message_instances_company_id`
+  - All provider tables updated conditionally
+
+- **Code Files Updated** (17 files):
+  - `src/instance-manager/models/instance.model.ts` - Interface updated
+  - `src/instance-manager/api/v1/instances.ts` - API endpoints
+  - `src/instance-manager/services/database.service.ts` - Database operations
+  - `src/services/agno-integration.service.ts` - Agno API integration
+  - `src/instance-manager/utils/docker-compose.utils.ts` - Docker labels
+  - `src/instance-manager/utils/naming.utils.ts` - Container naming
+  - And 11 other core files
+
+- **Scripts Updated** (3 files):
+  - `start-dev.sh` - Development curl commands
+  - `get-ports.sh` - Port listing display
+  - `cleanup-unused-instances.sh` - Instance cleanup display
+
+- **Documentation Updated** (2 files):
+  - `docs/INSTANCE_MANAGER_API.md` - API examples
+  - `FINAL_README.md` - Usage examples
+
+#### 🔧 Technical Details
+- **Agno Integration**: Maintains backward compatibility
+  - Internally uses `company_id` from database
+  - Still sends `user_id` to Agno API for compatibility
+  - Session ID generation unchanged
+
+- **Docker Labels**: Container labels updated
+  - New containers use `company_id` values
+  - Label key remains `wweb.instance.user_id` for compatibility
+
+- **Memory Management**: In-memory representation
+  - Database uses `company_id`
+  - Memory layer maps to `user_id` for internal compatibility
+
+#### ⚠️ Breaking Changes
+- **API Breaking Change**: Request/response format changed
+  ```diff
+  - {"user_id": "company-123", "provider": "whatsappweb"}
+  + {"company_id": "company-123", "provider": "whatsappweb"}
+  ```
+
+- **Container Recreation Required**: 
+  - All existing Docker containers must be removed
+  - New containers will have updated labels
+  - WhatsApp re-authentication required
+
+#### 🧪 Migration Path
+1. **Automated** (Recommended):
+   ```bash
+   ./scripts/full-migration-010.sh
+   ```
+
+2. **Manual** (Step-by-step):
+   ```bash
+   ./scripts/cleanup-all-instances.sh
+   ./scripts/apply-migration-010.sh  
+   docker-compose down && docker-compose up -d --build
+   ```
+
+#### 📊 Statistics
+- **Files Changed**: 22 files
+- **New Files**: 4 migration scripts
+- **Lines Added**: 560+
+- **Lines Modified**: 55+
+
+---
