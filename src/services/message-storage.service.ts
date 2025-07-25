@@ -285,4 +285,187 @@ export class MessageStorageService {
       return 0;
     }
   }
+
+  /**
+   * Получает сообщения для всех инстансов компании
+   */
+  async getMessagesByCompany(
+    companyId: string,
+    options: {
+      chatId?: string;
+      limit?: number;
+      offset?: number;
+      isGroup?: boolean;
+      provider?: string;
+    } = {},
+  ): Promise<StoredMessage[]> {
+    try {
+      // Сначала получаем все инстансы компании
+      let instanceQuery = `
+        SELECT id FROM message_instances 
+        WHERE company_id = $1
+      `;
+      const instanceParams: any[] = [companyId];
+      let instanceParamIndex = 2;
+
+      if (options.provider) {
+        instanceQuery += ` AND provider = $${instanceParamIndex}`;
+        instanceParams.push(options.provider);
+        instanceParamIndex++;
+      }
+
+      const instanceResult = await this.pool.query(instanceQuery, instanceParams);
+      const instanceIds = instanceResult.rows.map(row => row.id);
+
+      if (instanceIds.length === 0) {
+        logger.debug('No instances found for company', { companyId });
+        return [];
+      }
+
+      // Затем получаем сообщения для всех инстансов компании
+      let query = `
+        SELECT m.* FROM ${this.schema}.messages m
+        WHERE m.instance_id = ANY($1)
+      `;
+      const params: any[] = [instanceIds];
+      let paramIndex = 2;
+
+      if (options.chatId) {
+        query += ` AND m.chat_id = $${paramIndex}`;
+        params.push(options.chatId);
+        paramIndex++;
+      }
+
+      if (options.isGroup !== undefined) {
+        query += ` AND m.is_group = $${paramIndex}`;
+        params.push(options.isGroup);
+        paramIndex++;
+      }
+
+      query += ' ORDER BY m.timestamp DESC';
+
+      if (options.limit) {
+        query += ` LIMIT $${paramIndex}`;
+        params.push(options.limit);
+        paramIndex++;
+      }
+
+      if (options.offset) {
+        query += ` OFFSET $${paramIndex}`;
+        params.push(options.offset);
+      }
+
+      const result = await this.pool.query<StoredMessage>(query, params);
+
+      logger.debug('Retrieved messages by company from database', {
+        companyId,
+        instanceCount: instanceIds.length,
+        messageCount: result.rows.length,
+        options,
+      });
+
+      return result.rows;
+    } catch (error) {
+      logger.error('Failed to get messages by company from database', {
+        error: error instanceof Error ? error.message : String(error),
+        companyId,
+        options,
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Получает статистику сообщений для компании
+   */
+  async getCompanyMessageStats(companyId: string): Promise<{
+    total_messages: number;
+    text_messages: number;
+    media_messages: number;
+    group_messages: number;
+    private_messages: number;
+    today_messages: number;
+    this_week_messages: number;
+    this_month_messages: number;
+    instances_count: number;
+  }> {
+    try {
+      // Получаем инстансы компании
+      const instanceResult = await this.pool.query(
+        'SELECT id FROM message_instances WHERE company_id = $1',
+        [companyId]
+      );
+      const instanceIds = instanceResult.rows.map(row => row.id);
+
+      if (instanceIds.length === 0) {
+        return {
+          total_messages: 0,
+          text_messages: 0,
+          media_messages: 0,
+          group_messages: 0,
+          private_messages: 0,
+          today_messages: 0,
+          this_week_messages: 0,
+          this_month_messages: 0,
+          instances_count: 0,
+        };
+      }
+
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      const query = `
+        SELECT 
+          COUNT(*) as total_messages,
+          COUNT(CASE WHEN message_type = 'text' THEN 1 END) as text_messages,
+          COUNT(CASE WHEN message_type != 'text' THEN 1 END) as media_messages,
+          COUNT(CASE WHEN is_group = true THEN 1 END) as group_messages,
+          COUNT(CASE WHEN is_group = false THEN 1 END) as private_messages,
+          COUNT(CASE WHEN timestamp >= $2 THEN 1 END) as today_messages,
+          COUNT(CASE WHEN timestamp >= $3 THEN 1 END) as this_week_messages,
+          COUNT(CASE WHEN timestamp >= $4 THEN 1 END) as this_month_messages
+        FROM ${this.schema}.messages 
+        WHERE instance_id = ANY($1)
+      `;
+
+      const result = await this.pool.query(query, [
+        instanceIds,
+        todayStart.toISOString(),
+        weekStart.toISOString(),
+        monthStart.toISOString(),
+      ]);
+
+      const stats = result.rows[0];
+
+      return {
+        total_messages: parseInt(stats.total_messages) || 0,
+        text_messages: parseInt(stats.text_messages) || 0,
+        media_messages: parseInt(stats.media_messages) || 0,
+        group_messages: parseInt(stats.group_messages) || 0,
+        private_messages: parseInt(stats.private_messages) || 0,
+        today_messages: parseInt(stats.today_messages) || 0,
+        this_week_messages: parseInt(stats.this_week_messages) || 0,
+        this_month_messages: parseInt(stats.this_month_messages) || 0,
+        instances_count: instanceIds.length,
+      };
+    } catch (error) {
+      logger.error('Failed to get company message stats from database', {
+        error: error instanceof Error ? error.message : String(error),
+        companyId,
+      });
+      return {
+        total_messages: 0,
+        text_messages: 0,
+        media_messages: 0,
+        group_messages: 0,
+        private_messages: 0,
+        today_messages: 0,
+        this_week_messages: 0,
+        this_month_messages: 0,
+        instances_count: 0,
+      };
+    }
+  }
 }
