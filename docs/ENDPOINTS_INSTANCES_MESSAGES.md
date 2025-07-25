@@ -460,19 +460,26 @@ CREATE TABLE message_instances (
     company_id VARCHAR(255) NOT NULL,  -- ID компании
     provider VARCHAR(50) NOT NULL,     -- whatsappweb, telegram, etc.
     type_instance TEXT[],              -- ['api', 'webhook']
-    config JSONB,                      -- конфигурация инстанса
-    status VARCHAR(50),                -- running, stopped, error
-    auth_status VARCHAR(50),           -- authenticated, pending, failed
-    ports JSONB,                       -- {"api": 8080}
-    account VARCHAR(255),              -- номер телефона или username
+    port_api INTEGER,                  -- порт для API
+    port_mcp INTEGER,                  -- порт для MCP
+    api_key VARCHAR,                   -- API ключ
+    api_key_generated_at TIMESTAMP,    -- время генерации API ключа
+    last_qr_generated_at TIMESTAMP,    -- время последней генерации QR кода
+    api_webhook_schema JSONB,          -- схема webhook для API
+    mcp_schema JSONB,                  -- схема MCP
+    agno_config JSONB,                 -- конфигурация Agno
+    auth_status VARCHAR(50),           -- authenticated, pending, failed, qr_ready, client_ready
+    account TEXT,                      -- номер телефона или username
+    whatsapp_state TEXT,               -- состояние WhatsApp
+    token TEXT,                        -- токен
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Индекс для быстрой фильтрации по company_id
+-- Индексы для быстрой фильтрации
 CREATE INDEX idx_message_instances_company_id ON message_instances(company_id);
 CREATE INDEX idx_message_instances_provider ON message_instances(provider);
-CREATE INDEX idx_message_instances_status ON message_instances(status);
+CREATE INDEX idx_message_instances_auth_status ON message_instances(auth_status);
 ```
 
 ### 5.2 Таблица messages

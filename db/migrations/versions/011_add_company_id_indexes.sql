@@ -5,35 +5,7 @@
 -- Проверяем существование индексов перед созданием
 DO $$
 BEGIN
-    -- Индекс для быстрой фильтрации инстансов по company_id
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_indexes 
-        WHERE tablename = 'message_instances' 
-        AND indexname = 'idx_message_instances_company_id'
-    ) THEN
-        CREATE INDEX idx_message_instances_company_id 
-        ON message_instances(company_id);
-        
-        RAISE NOTICE 'Created index: idx_message_instances_company_id';
-    ELSE
-        RAISE NOTICE 'Index already exists: idx_message_instances_company_id';
-    END IF;
-
-    -- Индекс для фильтрации по провайдеру
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_indexes 
-        WHERE tablename = 'message_instances' 
-        AND indexname = 'idx_message_instances_provider'
-    ) THEN
-        CREATE INDEX idx_message_instances_provider 
-        ON message_instances(provider);
-        
-        RAISE NOTICE 'Created index: idx_message_instances_provider';
-    ELSE
-        RAISE NOTICE 'Index already exists: idx_message_instances_provider';
-    END IF;
-
-    -- Композитный индекс для фильтрации по company_id + provider
+    -- Композитный индекс для фильтрации по company_id + provider (если не существует)
     IF NOT EXISTS (
         SELECT 1 FROM pg_indexes 
         WHERE tablename = 'message_instances' 
@@ -47,18 +19,18 @@ BEGIN
         RAISE NOTICE 'Index already exists: idx_message_instances_company_provider';
     END IF;
 
-    -- Индекс для фильтрации по статусу
+    -- Композитный индекс для company_id + auth_status
     IF NOT EXISTS (
         SELECT 1 FROM pg_indexes 
         WHERE tablename = 'message_instances' 
-        AND indexname = 'idx_message_instances_status'
+        AND indexname = 'idx_message_instances_company_auth_status'
     ) THEN
-        CREATE INDEX idx_message_instances_status 
-        ON message_instances(status);
+        CREATE INDEX idx_message_instances_company_auth_status 
+        ON message_instances(company_id, auth_status);
         
-        RAISE NOTICE 'Created index: idx_message_instances_status';
+        RAISE NOTICE 'Created index: idx_message_instances_company_auth_status';
     ELSE
-        RAISE NOTICE 'Index already exists: idx_message_instances_status';
+        RAISE NOTICE 'Index already exists: idx_message_instances_company_auth_status';
     END IF;
 
     -- Композитный индекс для сообщений: instance_id + timestamp (для быстрой сортировки)
@@ -89,20 +61,6 @@ BEGIN
         RAISE NOTICE 'Index already exists: idx_messages_instance_chat_timestamp';
     END IF;
 
-    -- Индекс для фильтрации сообщений по типу группы
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_indexes 
-        WHERE tablename = 'messages' 
-        AND indexname = 'idx_messages_is_group'
-    ) THEN
-        CREATE INDEX idx_messages_is_group 
-        ON messages(is_group);
-        
-        RAISE NOTICE 'Created index: idx_messages_is_group';
-    ELSE
-        RAISE NOTICE 'Index already exists: idx_messages_is_group';
-    END IF;
-
     -- Композитный индекс для сообщений: instance_id + is_group + timestamp
     IF NOT EXISTS (
         SELECT 1 FROM pg_indexes 
@@ -117,18 +75,18 @@ BEGIN
         RAISE NOTICE 'Index already exists: idx_messages_instance_group_timestamp';
     END IF;
 
-    -- Индекс для быстрого поиска по message_source (api, agno, device, user)
+    -- Композитный индекс для сообщений: instance_id + message_source + timestamp
     IF NOT EXISTS (
         SELECT 1 FROM pg_indexes 
         WHERE tablename = 'messages' 
-        AND indexname = 'idx_messages_message_source'
+        AND indexname = 'idx_messages_instance_source_timestamp'
     ) THEN
-        CREATE INDEX idx_messages_message_source 
-        ON messages(message_source);
+        CREATE INDEX idx_messages_instance_source_timestamp 
+        ON messages(instance_id, message_source, timestamp DESC);
         
-        RAISE NOTICE 'Created index: idx_messages_message_source';
+        RAISE NOTICE 'Created index: idx_messages_instance_source_timestamp';
     ELSE
-        RAISE NOTICE 'Index already exists: idx_messages_message_source';
+        RAISE NOTICE 'Index already exists: idx_messages_instance_source_timestamp';
     END IF;
 
     -- Обновляем статистику таблиц для оптимизатора

@@ -3740,3 +3740,11 @@ GET /api/v1/logs/health
 - **Lines Modified**: 55+
 
 ---
+
+## [Unreleased]
+
+### Fixed
+- **db/migrations/versions/011_add_company_id_indexes.sql**: Исправлена миграция - заменено несуществующее поле `status` на `auth_status`, убраны индексы которые уже существуют в базе данных
+- **src/instance-manager/api/v1/company-messages.ts**: Исправлен эндпоинт `/api/v1/company/:companyId/instances` - заменен параметр `status` на `auth_status`
+- **src/instance-manager/services/database.service.ts**: Добавлена поддержка фильтра `auth_status` в метод `getAllInstances()`
+- **docs/ENDPOINTS_INSTANCES_MESSAGES.md**: Обновлена документация схемы таблицы `message_instances` в соответствии с реальной структурой БД

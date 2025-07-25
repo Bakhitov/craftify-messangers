@@ -177,7 +177,7 @@ companyMessagesRouter.get(
         'slack',
         'discord',
       ]),
-    query('status').optional().isString(),
+    query('auth_status').optional().isString(),
   ],
   messagesRateLimit.middleware(),
   async (req: Request, res: Response): Promise<void> => {
@@ -194,12 +194,12 @@ companyMessagesRouter.get(
 
       const companyId = req.params.companyId;
       const provider = req.query.provider as string;
-      const status = req.query.status as string;
+      const auth_status = req.query.auth_status as string;
 
       const filters = {
         company_id: companyId,
         provider,
-        status,
+        auth_status,
       };
 
       // Удаляем undefined значения

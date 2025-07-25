@@ -141,6 +141,7 @@ export class DatabaseService {
   async getAllInstances(filters?: {
     company_id?: string;
     provider?: string;
+    auth_status?: string;
   }): Promise<MessageInstance[]> {
     let query = 'SELECT * FROM public.message_instances WHERE 1=1';
     const params: unknown[] = [];
@@ -155,6 +156,12 @@ export class DatabaseService {
     if (filters?.provider) {
       query += ` AND provider = $${paramIndex}`;
       params.push(filters.provider);
+      paramIndex++;
+    }
+
+    if (filters?.auth_status) {
+      query += ` AND auth_status = $${paramIndex}`;
+      params.push(filters.auth_status);
       paramIndex++;
     }
 
